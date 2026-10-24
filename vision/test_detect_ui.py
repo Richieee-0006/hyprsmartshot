@@ -228,5 +228,25 @@ class TestUIDetector(unittest.TestCase):
         panels = [b for b in res["boxes"] if b["type"] == "panel"]
         self.assertGreaterEqual(len(panels), 1, "Ornate frame with decorative corners should be detected as panel")
 
+    def test_floating_window_seeding(self):
+        import json
+        img = np.full((600, 800, 3), 20, dtype=np.uint8)
+        path = self._save_img("clients_test.png", img)
+        clients = [
+            {"at": [150, 120], "size": [400, 300], "floating": True, "title": "Overlay Window", "class": "kitty", "hidden": False, "mapped": True},
+            {"at": [0, 0], "size": [800, 600], "floating": False, "title": "Tiled Window", "class": "kitty", "hidden": False, "mapped": True}
+        ]
+        clients_path = os.path.join(self.temp_dir.name, "clients.json")
+        with open(clients_path, "w") as f:
+            json.dump(clients, f)
+
+        res = detect_ui_elements(path, clients_path=clients_path)
+        floating_wins = [b for b in res["boxes"] if b.get("type") == "floating_window"]
+        self.assertGreaterEqual(len(floating_wins), 1, "Seeded floating overlay window should be detected")
+        self.assertEqual(floating_wins[0]["x"], 150)
+        self.assertEqual(floating_wins[0]["y"], 120)
+        self.assertEqual(floating_wins[0]["w"], 400)
+        self.assertEqual(floating_wins[0]["h"], 300)
+
 if __name__ == "__main__":
     unittest.main()

@@ -81,13 +81,12 @@ fi
 hyprctl clients -j > "$CLIENTS_JSON" 2>/dev/null || echo "[]" > "$CLIENTS_JSON"
 
 # 2. Run Computer Vision UI detection in background
-"$VENV_PYTHON" "$CV_SCRIPT" "$FREEZE_IMG" "$BOXES_JSON" &
+"$VENV_PYTHON" "$CV_SCRIPT" "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" &
 CV_PID=$!
 
 # 3. Export mode to Quickshell
 case "$MODE" in
     window) export SMARTSHOT_MODE="window" ;;
-    region) export SMARTSHOT_MODE="region" ;;
     screen) export SMARTSHOT_MODE="screen" ;;
     *)      export SMARTSHOT_MODE="universal" ;;
 esac

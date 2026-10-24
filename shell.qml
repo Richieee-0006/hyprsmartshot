@@ -304,14 +304,12 @@ Scope {
                     }
                 }
 
-                // Modes 1..4
+                // Modes 1..3
                 if (event.key === Qt.Key_1) {
                     root.mode = "universal"; selector.mode = "universal";
                 } else if (event.key === Qt.Key_2) {
                     root.mode = "window"; selector.mode = "window";
                 } else if (event.key === Qt.Key_3) {
-                    root.mode = "region"; selector.mode = "region";
-                } else if (event.key === Qt.Key_4) {
                     root.mode = "screen"; selector.mode = "screen";
                 }
             }

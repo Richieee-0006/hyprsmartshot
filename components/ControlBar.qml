@@ -9,7 +9,6 @@ Rectangle {
     readonly property var modes: [
         { id: "universal", label: "Smart / Herní", icon: "󰓥" },
         { id: "window",    label: "Okno",          icon: "󱂬" },
-        { id: "region",    label: "Oblast",        icon: "󰒉" },
         { id: "screen",    label: "Obrazovka",     icon: "󰍹" }
     ]
 
@@ -29,6 +28,7 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
+        z: 1
         onPressed: (mouse) => mouse.accepted = true
         onReleased: (mouse) => mouse.accepted = true
         onClicked: (mouse) => mouse.accepted = true
@@ -40,6 +40,7 @@ Rectangle {
         height: parent.height - 8
         width: 114
         y: 4
+        z: 2
         radius: height / 2
         color: Theme.accent
         opacity: 0.9
@@ -55,8 +56,8 @@ Rectangle {
 
         Behavior on x {
             SpringAnimation {
-                spring: 5.5
-                damping: 0.70
+                spring: 4.5
+                damping: 0.28
                 mass: 0.8
             }
         }
@@ -66,6 +67,7 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: 4
         spacing: 0
+        z: 10
 
         Repeater {
             model: root.modes
@@ -78,6 +80,7 @@ Rectangle {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
+                    z: 10
                     onClicked: root.modeSelected(modelData.id)
                 }
 
@@ -127,6 +130,7 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                z: 10
                 onClicked: root.toggleMagnifierRequested()
             }
 
@@ -155,6 +159,7 @@ Rectangle {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
+                z: 10
                 onClicked: root.closeRequested()
             }
 

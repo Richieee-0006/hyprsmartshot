@@ -26,9 +26,8 @@ Ultra-smart screenshotovací utilita pro **Hyprland** s automatickým rozpoznáv
 
 | Režim | Volba | Popis |
 | :--- | :--- | :--- |
-| **Smart / Herní** | `universal` (výchozí) | Detekce herních panelů, slotů i běžných oken s možností volného tažení. |
-| **Okno** | `window` | Nativní přichytávání k oknům Hyprlandu přes IPC. |
-| **Oblast** | `region` | Klasický obdélníkový výběr s magnetickým zarovnáním na hrany. |
+| **Smart / Herní** | `universal` (výchozí) | Detekce herních panelů, slotů, plovoucích overlayů i oken + volný výběr tažením myší s magnetickým přichytáváním. |
+| **Okno** | `window` | Nativní přichytávání k oknům Hyprlandu přes IPC (s prioritou pro plovoucí overlay okna). |
 | **Obrazovka** | `screen` | Okamžité zachycení celého monitoru. |
 
 ---
@@ -38,6 +37,7 @@ Ultra-smart screenshotovací utilita pro **Hyprland** s automatickým rozpoznáv
 | Vstup | Akce |
 | :--- | :--- |
 | **Pohyb myší** | Magnetické zvýraznění a přichycení k herním panelům, slotům nebo oknům |
+| **Tažení myší** | Volný obdélníkový výběr s magnetickým přichytáváním k hranám |
 | **Kolečko myši (Scroll)** | Změna úrovně hierarchie (např. slot předmětu $\leftrightarrow$ batoh $\leftrightarrow$ celá hra) |
 | **Levé kliknutí** | **Potvrzovací režim**: Zamkne výběr a zobrazí potvrzovací lištu |
 | **Enter / Dvojklik** | Zkopírování výběru do schránky (`wl-copy`) a ukončení |
@@ -45,7 +45,7 @@ Ultra-smart screenshotovací utilita pro **Hyprland** s automatickým rozpoznáv
 | **O** | OCR rozpoznání textu z výběru (přes `tesseract`) a zkopírování do schránky |
 | **Alt** | Zapnutí / vypnutí zvětšovací lupy s přesnými pixely |
 | **Esc / Pravé tlačítko** | Odemknutí zamčeného výběru / zrušení a zavření overlaye |
-| **1 / 2 / 3 / 4** | Přepínání režimů (Univerzální / Okno / Oblast / Obrazovka) |
+| **1 / 2 / 3** | Přepínání režimů (Univerzální / Okno / Obrazovka) |
 
 ---
 

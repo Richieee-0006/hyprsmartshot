@@ -272,7 +272,7 @@ def is_duplicate(a, b, tol=5):
             abs(a['w'] - b['w']) <= tol * 1.5 and
             abs(a['h'] - b['h']) <= tol * 1.5)
 
-def detect_ui_elements(image_path, min_area=240, max_area_ratio=0.98):
+def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_ratio=0.98):
     start_time = time.time()
 
     img = cv2.imread(image_path)
@@ -315,6 +315,43 @@ def detect_ui_elements(image_path, min_area=240, max_area_ratio=0.98):
     contours, _ = cv2.findContours(combined, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
     raw_boxes = []
+
+    # Pre-seed visible Hyprland client windows (especially floating overlay windows)
+    if clients_path and os.path.isfile(clients_path):
+        try:
+            with open(clients_path, "r") as cf:
+                clients_data = json.load(cf)
+                if isinstance(clients_data, list):
+                    for c in clients_data:
+                        if not isinstance(c, dict):
+                            continue
+                        if c.get("hidden") is True or c.get("mapped") is False:
+                            continue
+                        at = c.get("at", [])
+                        size = c.get("size", [])
+                        if len(at) == 2 and len(size) == 2:
+                            cx, cy = int(at[0]), int(at[1])
+                            cw, ch = int(size[0]), int(size[1])
+                            if cw >= 20 and ch >= 20:
+                                is_fl = bool(c.get("floating", False))
+                                raw_boxes.append({
+                                    "x": int(cx),
+                                    "y": int(cy),
+                                    "w": int(cw),
+                                    "h": int(ch),
+                                    "area": int(cw * ch),
+                                    "extent": 1.0,
+                                    "contrast": 60.0,
+                                    "type": "floating_window" if is_fl else "window",
+                                    "floating": is_fl,
+                                    "pinned": bool(c.get("pinned", False)),
+                                    "focusHistoryID": c.get("focusHistoryID", 999),
+                                    "title": c.get("title", ""),
+                                    "class": c.get("class", ""),
+                                    "is_client": True
+                                })
+        except Exception:
+            pass
 
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
@@ -420,13 +457,14 @@ def detect_ui_elements(image_path, min_area=240, max_area_ratio=0.98):
 
 def main():
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: detect_ui.py <image_path> [output_json_path]"}))
+        print(json.dumps({"error": "Usage: detect_ui.py <image_path> [output_json_path] [clients_json_path]"}))
         sys.exit(1)
 
     image_path = sys.argv[1]
     output_path = sys.argv[2] if len(sys.argv) > 2 else None
+    clients_path = sys.argv[3] if len(sys.argv) > 3 else None
 
-    result = detect_ui_elements(image_path)
+    result = detect_ui_elements(image_path, clients_path=clients_path)
     output_json = json.dumps(result, indent=None)
 
     if output_path:
