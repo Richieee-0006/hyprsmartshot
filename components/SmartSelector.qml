@@ -16,6 +16,8 @@ Item {
     property bool isConfirmed: false
     property int currentHierarchyIndex: 0
     property var candidateHierarchy: []
+    property real pillSpawnX: 0
+    property real pillSpawnY: 0
 
     onModeChanged: {
         if (mode === "screen") {
@@ -463,13 +465,17 @@ Item {
         selectionW: Math.round(root.selectionWidth)
         selectionH: Math.round(root.selectionHeight)
 
-        // Position pill smartly: below selection, or above if close to bottom
-        x: Math.min(Math.max(root.selectionX + (root.selectionWidth - width) / 2, 20), root.width - width - 20)
+        // Position pill directly under the mouse cursor where selection was made
+        x: {
+            const px = (root.pillSpawnX > 0) ? root.pillSpawnX : (root.selectionX + root.selectionWidth / 2);
+            return Math.min(Math.max(px - width / 2, 20), root.width - width - 20);
+        }
         y: {
-            if (root.selectionY + root.selectionHeight + height + 20 < root.height) {
-                return root.selectionY + root.selectionHeight + 12;
-            } else if (root.selectionY - height - 12 >= 80) {
-                return root.selectionY - height - 12;
+            const py = (root.pillSpawnY > 0) ? root.pillSpawnY : (root.selectionY + root.selectionHeight / 2);
+            if (py + 18 + height < root.height - 20) {
+                return py + 18;
+            } else if (py - 18 - height >= 80) {
+                return py - 18 - height;
             } else {
                 return Math.max(80, root.height - height - 70);
             }
@@ -675,6 +681,8 @@ Item {
         root.isConfirmed = false;
         root.isResizing = false;
         root.isMoving = false;
+        root.pillSpawnX = 0;
+        root.pillSpawnY = 0;
         root.targetX = 0;
         root.targetY = 0;
         root.targetW = 0;
@@ -821,12 +829,16 @@ Item {
             if (root.isDragging) {
                 root.isDragging = false;
                 if (root.selectionWidth > 15 && root.selectionHeight > 15) {
+                    root.pillSpawnX = mouse.x;
+                    root.pillSpawnY = mouse.y;
                     root.isConfirmed = true;
                 } else {
                     root.clearConfirmation();
                 }
             } else if (!root.isConfirmed && root.selectionWidth > 15 && root.selectionHeight > 15) {
                 // Click locked on candidate box (Confirmation mode)
+                root.pillSpawnX = mouse.x;
+                root.pillSpawnY = mouse.y;
                 root.isConfirmed = true;
                 root.setSelection(root.targetX, root.targetY, root.targetW, root.targetH);
                 root.selectionConfirmed(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight);

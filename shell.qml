@@ -66,10 +66,8 @@ Scope {
         const crop = cropCommand(x, y, width, height, tempCrop);
         const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} "Screenshot zkopírován" "Výřez byl uložen do schránky" && rm -f ${shellEscape(tempCrop)}`;
         playShutterSound();
-        freezeWindow.triggerFlash(() => {
-            Quickshell.execDetached(["sh", "-c", cmd]);
-            root.closeOverlay();
-        });
+        Quickshell.execDetached(["sh", "-c", cmd]);
+        root.closeOverlay();
     }
 
     function doSave(x, y, width, height) {
@@ -79,10 +77,8 @@ Scope {
         const crop = cropCommand(x, y, width, height, outputPath);
         const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} "Screenshot uložen" "Uloženo do ${outputPath} a zkopírováno"`;
         playShutterSound();
-        freezeWindow.triggerFlash(() => {
-            Quickshell.execDetached(["sh", "-c", cmd]);
-            root.closeOverlay();
-        });
+        Quickshell.execDetached(["sh", "-c", cmd]);
+        root.closeOverlay();
     }
 
     function doAnnotate(x, y, width, height) {
@@ -94,21 +90,19 @@ Scope {
 
         const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && {
             if command -v satty >/dev/null 2>&1; then
-                satty --filename ${shellEscape(tempCrop)} --output-filename ${shellEscape(outputPath)} --fullscreen
+                satty --filename ${shellEscape(tempCrop)} --output-filename ${shellEscape(outputPath)} --early-exit --copy-command "wl-copy --type image/png" --initial-tool brush
             elif command -v swappy >/dev/null 2>&1; then
                 swappy -f ${shellEscape(tempCrop)} -o ${shellEscape(outputPath)}
             else
                 wl-copy --type image/png < ${shellEscape(tempCrop)}
-                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} "Anotační editor nenalezen" "Výřez byl zkopírován do schránky. Pro kreslení nainstalujte satty (sudo pacman -S satty) nebo swappy."
+                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} "Anotační editor nenalezen" "Výřez byl zkopírován do schránky."
             fi
             rm -f ${shellEscape(tempCrop)}
         } &`;
 
         playShutterSound();
-        freezeWindow.triggerFlash(() => {
-            Quickshell.execDetached(["sh", "-c", cmd]);
-            root.closeOverlay();
-        });
+        Quickshell.execDetached(["sh", "-c", cmd]);
+        root.closeOverlay();
     }
 
     function doOcr(x, y, width, height) {
@@ -116,10 +110,8 @@ Scope {
         const crop = cropCommand(x, y, width, height, tempCrop);
         const cmd = `${crop} && tesseract ${shellEscape(tempCrop)} stdout -l eng+ces 2>/dev/null | wl-copy && notify-send -a "HyprSmartShot" "OCR dokončeno" "Rozpoznaný text byl zkopírován do schránky" && rm -f ${shellEscape(tempCrop)}`;
         playShutterSound();
-        freezeWindow.triggerFlash(() => {
-            Quickshell.execDetached(["sh", "-c", cmd]);
-            root.closeOverlay();
-        });
+        Quickshell.execDetached(["sh", "-c", cmd]);
+        root.closeOverlay();
     }
 
     FreezeScreen {
