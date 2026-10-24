@@ -1,0 +1,6 @@
+singleton Theme 1.0 Theme.qml
+ControlBar 1.0 ControlBar.qml
+ActionPill 1.0 ActionPill.qml
+SmartSelector 1.0 SmartSelector.qml
+FreezeScreen 1.0 FreezeScreen.qml
+Magnifier 1.0 Magnifier.qml

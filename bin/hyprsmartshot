@@ -1,0 +1,88 @@
+#!/usr/bin/env bash
+# HyprSmartShot - Runner & Integrator
+# Captures freeze-frame, runs CV detector, and launches Quickshell overlay
+
+set -e
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+FREEZE_IMG="/tmp/hyprsmartshot_freeze.png"
+BOXES_JSON="/tmp/hyprsmartshot_boxes.json"
+VENV_PYTHON="$DIR/.venv/bin/python"
+CV_SCRIPT="$DIR/vision/detect_ui.py"
+
+# Clean up stale files from previous runs
+rm -f "$FREEZE_IMG" "$BOXES_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null || true
+
+# Deferred cleanup on exit to ensure detached background processes (magick, wl-copy) complete safely
+cleanup() {
+    ( sleep 6 && rm -f "$FREEZE_IMG" "$BOXES_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null ) &
+}
+trap cleanup EXIT
+
+MODE="${1:-universal}"
+
+# Query focused monitor details from Hyprland
+MONITOR_JSON=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true)' 2>/dev/null || echo "")
+if [ -z "$MONITOR_JSON" ] || [ "$MONITOR_JSON" = "null" ]; then
+    MONITOR_JSON=$(hyprctl monitors -j 2>/dev/null | jq -r '.[0]' 2>/dev/null || echo "")
+fi
+
+MONITOR_NAME=$(echo "$MONITOR_JSON" | jq -r '.name // empty' 2>/dev/null || echo "")
+MONITOR_X=$(echo "$MONITOR_JSON" | jq -r '.x // 0' 2>/dev/null || echo "0")
+MONITOR_Y=$(echo "$MONITOR_JSON" | jq -r '.y // 0' 2>/dev/null || echo "0")
+MONITOR_W=$(echo "$MONITOR_JSON" | jq -r '.width // 1920' 2>/dev/null || echo "1920")
+MONITOR_H=$(echo "$MONITOR_JSON" | jq -r '.height // 1080' 2>/dev/null || echo "1080")
+MONITOR_SCALE=$(echo "$MONITOR_JSON" | jq -r '.scale // 1' 2>/dev/null || echo "1")
+
+export SMARTSHOT_MONITOR_NAME="$MONITOR_NAME"
+export SMARTSHOT_MONITOR_X="$MONITOR_X"
+export SMARTSHOT_MONITOR_Y="$MONITOR_Y"
+export SMARTSHOT_MONITOR_W="$MONITOR_W"
+export SMARTSHOT_MONITOR_H="$MONITOR_H"
+export SMARTSHOT_MONITOR_SCALE="$MONITOR_SCALE"
+
+play_shutter() {
+    canberra-gtk-play -i camera-shutter 2>/dev/null || paplay /usr/share/sounds/freedesktop/stereo/camera-shutter.oga 2>/dev/null || true
+}
+
+# Fast fullscreen bypass if user called 'full'
+if [ "$MODE" = "full" ]; then
+    SAVE_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"
+    mkdir -p "$SAVE_DIR"
+    TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
+    FILEPATH="$SAVE_DIR/screenshot-$TIMESTAMP.png"
+    if [ -n "$MONITOR_NAME" ]; then
+        grim -o "$MONITOR_NAME" "$FILEPATH"
+    else
+        grim "$FILEPATH"
+    fi
+    play_shutter &
+    wl-copy --type image/png < "$FILEPATH"
+    notify-send -a "HyprSmartShot" -i "$FILEPATH" "Fullscreen zachycen" "Uloženo do $FILEPATH a zkopírováno"
+    exit 0
+fi
+
+# 1. Instant screen freeze (focused monitor or all)
+if [ -n "$MONITOR_NAME" ]; then
+    grim -o "$MONITOR_NAME" "$FREEZE_IMG"
+else
+    grim "$FREEZE_IMG"
+fi
+
+# 2. Run Computer Vision UI detection in background
+"$VENV_PYTHON" "$CV_SCRIPT" "$FREEZE_IMG" "$BOXES_JSON" &
+CV_PID=$!
+
+# 3. Export mode to Quickshell
+case "$MODE" in
+    window) export SMARTSHOT_MODE="window" ;;
+    region) export SMARTSHOT_MODE="region" ;;
+    screen) export SMARTSHOT_MODE="screen" ;;
+    *)      export SMARTSHOT_MODE="universal" ;;
+esac
+
+# 4. Wait for CV to finish (takes ~30-60ms, usually already done)
+wait "$CV_PID" 2>/dev/null || true
+
+# 5. Launch Quickshell overlay
+quickshell -p "$DIR"
