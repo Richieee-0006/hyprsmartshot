@@ -38,9 +38,11 @@ Scope {
     function closeOverlay() {
         freezeWindow.visible = false;
         try {
-            Qt.quit();
+            Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
         } catch(e) {}
-        Quickshell.execDetached(["kill", Quickshell.processId.toString()]);
+        try {
+            Quickshell.execDetached(["sh", "-c", `(sleep 0.12 && kill -9 ${Quickshell.processId} 2>/dev/null) &`]);
+        } catch(e) {}
     }
 
     function doCopy(x, y, width, height) {
@@ -104,10 +106,17 @@ Scope {
         });
     }
 
-    // FreezeScreen overlay window
     FreezeScreen {
         id: freezeWindow
         onVisibleChanged: if (visible && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
+        onWindowConnected: if (typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
+
+        Timer {
+            interval: 50
+            running: true
+            repeat: false
+            onTriggered: if (typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
+        }
 
         SmartSelector {
             id: selector
@@ -180,25 +189,46 @@ Scope {
             anchors.fill: parent
             focus: true
             Component.onCompleted: forceActiveFocus()
+            onActiveFocusChanged: if (!activeFocus) forceActiveFocus()
 
-            Keys.onEscapePressed: {
+            Keys.onEscapePressed: (event) => {
+                event.accepted = true;
                 if (selector.isConfirmed) {
                     selector.clearConfirmation();
                 } else {
                     root.closeOverlay();
                 }
             }
-            Keys.onReturnPressed: {
+            Keys.onReturnPressed: (event) => {
+                event.accepted = true;
                 if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
                     root.doCopy(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
                 }
             }
-            Keys.onSpacePressed: {
+            Keys.onSpacePressed: (event) => {
+                event.accepted = true;
                 if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
                     root.doCopy(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
                 }
             }
             Keys.onPressed: (event) => {
+                // Escape fallback
+                if (event.key === Qt.Key_Escape) {
+                    event.accepted = true;
+                    if (selector.isConfirmed) {
+                        selector.clearConfirmation();
+                    } else {
+                        root.closeOverlay();
+                    }
+                    return;
+                }
+
+                // Q or Ctrl+Q: Close Overlay
+                if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Q) || (!selector.isConfirmed && event.key === Qt.Key_Q)) {
+                    root.closeOverlay();
+                    event.accepted = true;
+                    return;
+                }
                 // Ctrl+S or S (when confirmed): Save
                 if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) || (selector.isConfirmed && event.key === Qt.Key_S)) {
                     if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {

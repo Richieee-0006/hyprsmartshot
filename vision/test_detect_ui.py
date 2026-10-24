@@ -154,5 +154,76 @@ class TestUIDetector(unittest.TestCase):
         self.assertGreater(mid["depth"], outer["depth"])
         self.assertGreater(inner["depth"], mid["depth"])
 
+    def test_true_low_contrast_dark_fantasy(self):
+        # Realistic dark fantasy frame: background=18, interior=24, border=32 (contrast diff ~6-8)
+        img = np.full((600, 800, 3), 18, dtype=np.uint8)
+        cv2.rectangle(img, (120, 120), (680, 480), (24, 24, 24), -1)
+        cv2.rectangle(img, (120, 120), (680, 480), (32, 30, 28), 2)
+        path = self._save_img("true_low_contrast.png", img)
+
+        res = detect_ui_elements(path)
+        self.assertGreaterEqual(res["count"], 1)
+        panel = next((b for b in res["boxes"] if abs(b["x"] - 120) <= 8 and abs(b["y"] - 120) <= 8 and abs(b["w"] - 560) <= 12), None)
+        self.assertIsNotNone(panel, "Expected subtle dark fantasy panel (contrast ~6) to be detected")
+
+    def test_no_duplicate_concentric_boxes(self):
+        # 4px thick frame should yield exactly 1 deduplicated box, not 2 inner/outer concentric duplicates
+        img = np.full((500, 600, 3), 20, dtype=np.uint8)
+        cv2.rectangle(img, (100, 100), (500, 400), (40, 40, 40), -1)
+        cv2.rectangle(img, (100, 100), (500, 400), (180, 180, 180), 4)
+        path = self._save_img("thick_frame.png", img)
+
+        res = detect_ui_elements(path)
+        panels = [b for b in res["boxes"] if b["type"] == "panel"]
+        self.assertEqual(len(panels), 1, f"Expected exactly 1 panel, got {len(panels)} (duplicate inner/outer border detected)")
+
+    def test_inventory_with_nested_items(self):
+        # Inventory container with 4 slots containing item sprites (potion, sword, stack text)
+        img = np.full((300, 500, 3), 30, dtype=np.uint8)
+        cv2.rectangle(img, (50, 50), (450, 250), (45, 45, 45), -1)
+        cv2.rectangle(img, (50, 50), (450, 250), (120, 110, 100), 2)
+
+        for i in range(4):
+            sx = 70 + i * 90
+            sy = 80
+            cv2.rectangle(img, (sx, sy), (sx + 70, sy + 70), (20, 20, 20), -1)
+            cv2.rectangle(img, (sx, sy), (sx + 70, sy + 70), (150, 140, 120), 2)
+            if i == 0:
+                cv2.circle(img, (sx + 35, sy + 40), 18, (40, 40, 220), -1)
+            elif i == 1:
+                cv2.line(img, (sx + 15, sy + 55), (sx + 55, sy + 15), (220, 220, 220), 4)
+            elif i == 2:
+                cv2.putText(img, "64", (sx + 38, sy + 62), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+        path = self._save_img("inventory_items.png", img)
+        res = detect_ui_elements(path)
+
+        rows = [b for b in res["boxes"] if b["type"] == "grid_row"]
+        self.assertEqual(len(rows), 1, "Expected exactly 1 unified grid_row for 4 adjacent slots")
+        self.assertTrue(abs(rows[0]["w"] - 340) <= 20, "Unified row should span all 4 slots")
+
+        slots = [b for b in res["boxes"] if b["type"] == "slot"]
+        self.assertEqual(len(slots), 4, f"Expected 4 distinct slots, got {len(slots)}")
+
+        # Items inside slots should have type item and deeper hierarchy
+        items = [b for b in res["boxes"] if b["type"] == "item"]
+        self.assertGreaterEqual(len(items), 1, "Items inside slots should be classified as item")
+        for it in items:
+            self.assertGreater(it["depth"], slots[0]["depth"], "Item depth should be deeper than parent slot")
+
+    def test_ornate_beveled_frame(self):
+        # Ornate fantasy frame with corner notches
+        img = np.full((500, 600, 3), 20, dtype=np.uint8)
+        cv2.rectangle(img, (100, 100), (500, 400), (35, 35, 35), -1)
+        cv2.rectangle(img, (100, 100), (500, 400), (110, 100, 80), 2)
+        # Add decorative notches at corners
+        cv2.rectangle(img, (90, 90), (115, 115), (110, 100, 80), 2)
+        cv2.rectangle(img, (485, 90), (510, 115), (110, 100, 80), 2)
+        path = self._save_img("ornate_frame.png", img)
+
+        res = detect_ui_elements(path)
+        panels = [b for b in res["boxes"] if b["type"] == "panel"]
+        self.assertGreaterEqual(len(panels), 1, "Ornate frame with decorative corners should be detected as panel")
+
 if __name__ == "__main__":
     unittest.main()

@@ -177,20 +177,22 @@ Item {
                 anchors.centerIn: parent
                 text: {
                     const dim = `${Math.round(root.selectionWidth)} × ${Math.round(root.selectionHeight)}`;
+                    let prefix = "";
+                    const cur = root.candidateHierarchy[root.currentHierarchyIndex];
+                    if (cur) {
+                        if (cur.type === "grid_container") prefix = "Grid 󰕰 • ";
+                        else if (cur.type === "grid_row") prefix = "Řádek 󰒉 • ";
+                        else if (cur.type === "window") prefix = "Okno 󱂬 • ";
+                        else if (cur.type === "slot") prefix = "Slot 󰏫 • ";
+                        else if (cur.type === "item") prefix = "Předmět 󰆦 • ";
+                        else if (cur.type === "panel") prefix = "Panel 󱂬 • ";
+                        else if (cur.type === "button") prefix = "Tlačítko 󰐥 • ";
+                        else if (cur.type === "screen") prefix = "Obrazovka 󰍹 • ";
+                    }
                     if (root.candidateHierarchy.length > 1) {
-                        const cur = root.candidateHierarchy[root.currentHierarchyIndex];
-                        let prefix = "";
-                        if (cur) {
-                            if (cur.type === "grid_container") prefix = "Grid 󰕰 • ";
-                            else if (cur.type === "grid_row") prefix = "Řádek 󰒉 • ";
-                            else if (cur.type === "window") prefix = "Okno 󱂬 • ";
-                            else if (cur.type === "slot") prefix = "Slot 󰏫 • ";
-                            else if (cur.type === "panel") prefix = "Panel 󱂬 • ";
-                            else if (cur.type === "button") prefix = "Tlačítko 󰐥 • ";
-                        }
                         return `${prefix}${dim}  •  ${root.currentHierarchyIndex + 1}/${root.candidateHierarchy.length} [Scroll 󰒉]`;
                     }
-                    return dim;
+                    return `${prefix}${dim}`;
                 }
                 font.family: Theme.fontFamily
                 font.pixelSize: 11
@@ -288,47 +290,59 @@ Item {
 
                             switch (handleItem.handleType) {
                                 case "NW": {
-                                    const maxDx = root.resizeOrigW - 16;
-                                    const maxDy = root.resizeOrigH - 16;
-                                    const actualDx = Math.min(dx, maxDx);
-                                    const actualDy = Math.min(dy, maxDy);
-                                    root.setSelection(root.resizeOrigX + actualDx, root.resizeOrigY + actualDy, root.resizeOrigW - actualDx, root.resizeOrigH - actualDy);
+                                    const targetX = root.magneticSnapCoord(root.resizeOrigX + dx, 'x', 12);
+                                    const targetY = root.magneticSnapCoord(root.resizeOrigY + dy, 'y', 12);
+                                    const right = root.resizeOrigX + root.resizeOrigW;
+                                    const bottom = root.resizeOrigY + root.resizeOrigH;
+                                    const newX = Math.min(targetX, right - 16);
+                                    const newY = Math.min(targetY, bottom - 16);
+                                    root.setSelection(newX, newY, right - newX, bottom - newY);
                                     break;
                                 }
                                 case "NE": {
-                                    const maxDy = root.resizeOrigH - 16;
-                                    const actualDy = Math.min(dy, maxDy);
-                                    root.setSelection(root.resizeOrigX, root.resizeOrigY + actualDy, Math.max(16, root.resizeOrigW + dx), root.resizeOrigH - actualDy);
+                                    const targetRight = root.magneticSnapCoord(root.resizeOrigX + root.resizeOrigW + dx, 'x', 12);
+                                    const targetY = root.magneticSnapCoord(root.resizeOrigY + dy, 'y', 12);
+                                    const bottom = root.resizeOrigY + root.resizeOrigH;
+                                    const newY = Math.min(targetY, bottom - 16);
+                                    root.setSelection(root.resizeOrigX, newY, Math.max(16, targetRight - root.resizeOrigX), bottom - newY);
                                     break;
                                 }
                                 case "SW": {
-                                    const maxDx = root.resizeOrigW - 16;
-                                    const actualDx = Math.min(dx, maxDx);
-                                    root.setSelection(root.resizeOrigX + actualDx, root.resizeOrigY, root.resizeOrigW - actualDx, Math.max(16, root.resizeOrigH + dy));
+                                    const targetX = root.magneticSnapCoord(root.resizeOrigX + dx, 'x', 12);
+                                    const targetBottom = root.magneticSnapCoord(root.resizeOrigY + root.resizeOrigH + dy, 'y', 12);
+                                    const right = root.resizeOrigX + root.resizeOrigW;
+                                    const newX = Math.min(targetX, right - 16);
+                                    root.setSelection(newX, root.resizeOrigY, right - newX, Math.max(16, targetBottom - root.resizeOrigY));
                                     break;
                                 }
                                 case "SE": {
-                                    root.setSelection(root.resizeOrigX, root.resizeOrigY, Math.max(16, root.resizeOrigW + dx), Math.max(16, root.resizeOrigH + dy));
+                                    const targetRight = root.magneticSnapCoord(root.resizeOrigX + root.resizeOrigW + dx, 'x', 12);
+                                    const targetBottom = root.magneticSnapCoord(root.resizeOrigY + root.resizeOrigH + dy, 'y', 12);
+                                    root.setSelection(root.resizeOrigX, root.resizeOrigY, Math.max(16, targetRight - root.resizeOrigX), Math.max(16, targetBottom - root.resizeOrigY));
                                     break;
                                 }
                                 case "N": {
-                                    const maxDy = root.resizeOrigH - 16;
-                                    const actualDy = Math.min(dy, maxDy);
-                                    root.setSelection(root.resizeOrigX, root.resizeOrigY + actualDy, root.selectionWidth, root.resizeOrigH - actualDy);
+                                    const targetY = root.magneticSnapCoord(root.resizeOrigY + dy, 'y', 12);
+                                    const bottom = root.resizeOrigY + root.resizeOrigH;
+                                    const newY = Math.min(targetY, bottom - 16);
+                                    root.setSelection(root.resizeOrigX, newY, root.selectionWidth, bottom - newY);
                                     break;
                                 }
                                 case "S": {
-                                    root.setSelection(root.selectionX, root.selectionY, root.selectionWidth, Math.max(16, root.resizeOrigH + dy));
+                                    const targetBottom = root.magneticSnapCoord(root.resizeOrigY + root.resizeOrigH + dy, 'y', 12);
+                                    root.setSelection(root.selectionX, root.selectionY, root.selectionWidth, Math.max(16, targetBottom - root.selectionY));
                                     break;
                                 }
                                 case "W": {
-                                    const maxDx = root.resizeOrigW - 16;
-                                    const actualDx = Math.min(dx, maxDx);
-                                    root.setSelection(root.resizeOrigX + actualDx, root.selectionY, root.resizeOrigW - actualDx, root.selectionHeight);
+                                    const targetX = root.magneticSnapCoord(root.resizeOrigX + dx, 'x', 12);
+                                    const right = root.resizeOrigX + root.resizeOrigW;
+                                    const newX = Math.min(targetX, right - 16);
+                                    root.setSelection(newX, root.selectionY, right - newX, root.selectionHeight);
                                     break;
                                 }
                                 case "E": {
-                                    root.setSelection(root.selectionX, root.selectionY, Math.max(16, root.resizeOrigW + dx), root.selectionHeight);
+                                    const targetRight = root.magneticSnapCoord(root.resizeOrigX + root.resizeOrigW + dx, 'x', 12);
+                                    root.setSelection(root.selectionX, root.selectionY, Math.max(16, targetRight - root.selectionX), root.selectionHeight);
                                     break;
                                 }
                             }
@@ -450,9 +464,13 @@ Item {
                 const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
                 const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
 
+                const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
+
                 for (let i = 0; i < all.length; i++) {
                     const w = all[i];
                     if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
+                    if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
+                    if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
                     const wx = w.lastIpcObject.at[0] - ox;
                     const wy = w.lastIpcObject.at[1] - oy;
                     const ww = w.lastIpcObject.size[0];
@@ -578,6 +596,7 @@ Item {
         if (all && all.length) {
             const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
             const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
+            const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
             const mon = Hyprland.focusedMonitor;
             const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
             const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
@@ -585,6 +604,8 @@ Item {
             for (let i = 0; i < all.length; i++) {
                 const w = all[i];
                 if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
+                if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
+                if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
                 const p1 = (axis === 'x') ? (w.lastIpcObject.at[0] - ox) : (w.lastIpcObject.at[1] - oy);
                 const p2 = (axis === 'x') ? (p1 + w.lastIpcObject.size[0]) : (p1 + w.lastIpcObject.size[1]);
                 const d1 = Math.abs(val - p1);
@@ -607,17 +628,27 @@ Item {
         z: 3
 
         onPositionChanged: (mouse) => {
-            if (root.isDragging) {
-                const currentX = magneticSnapCoord(mouse.x, 'x', 14);
-                const currentY = magneticSnapCoord(mouse.y, 'y', 14);
-                root.selectionX = Math.min(root.dragStart.x, currentX);
-                root.selectionY = Math.min(root.dragStart.y, currentY);
-                root.selectionWidth = Math.abs(currentX - root.dragStart.x);
-                root.selectionHeight = Math.abs(currentY - root.dragStart.y);
-                root.targetX = root.selectionX;
-                root.targetY = root.selectionY;
-                root.targetW = root.selectionWidth;
-                root.targetH = root.selectionHeight;
+            if (mouse.buttons & Qt.LeftButton) {
+                if (!root.isDragging && !root.isConfirmed && !root.isResizing && !root.isMoving) {
+                    const dist = Math.hypot(mouse.x - root.dragStart.x, mouse.y - root.dragStart.y);
+                    if (dist > 6) {
+                        root.isDragging = true;
+                        root.dragStart.x = magneticSnapCoord(root.dragStart.x, 'x', 14);
+                        root.dragStart.y = magneticSnapCoord(root.dragStart.y, 'y', 14);
+                    }
+                }
+                if (root.isDragging) {
+                    const currentX = magneticSnapCoord(mouse.x, 'x', 14);
+                    const currentY = magneticSnapCoord(mouse.y, 'y', 14);
+                    root.selectionX = Math.min(root.dragStart.x, currentX);
+                    root.selectionY = Math.min(root.dragStart.y, currentY);
+                    root.selectionWidth = Math.abs(currentX - root.dragStart.x);
+                    root.selectionHeight = Math.abs(currentY - root.dragStart.y);
+                    root.targetX = root.selectionX;
+                    root.targetY = root.selectionY;
+                    root.targetW = root.selectionWidth;
+                    root.targetH = root.selectionHeight;
+                }
             } else if (!root.isConfirmed && !root.isResizing && !root.isMoving) {
                 root.updateHoverCandidates(mouse.x, mouse.y);
             }
@@ -625,7 +656,10 @@ Item {
 
         onPressed: (mouse) => {
             if (mouse.button === Qt.RightButton) {
-                if (root.isConfirmed) {
+                if (root.isDragging) {
+                    root.isDragging = false;
+                    root.clearConfirmation();
+                } else if (root.isConfirmed) {
                     root.clearConfirmation();
                 } else {
                     root.cancelRequested();
@@ -644,17 +678,6 @@ Item {
                 }
 
                 root.dragStart = Qt.point(mouse.x, mouse.y);
-            }
-        }
-
-        onMouseXChanged: {
-            if (mouseArea.pressed && !root.isDragging && !root.isConfirmed && !root.isResizing && !root.isMoving) {
-                const dist = Math.hypot(mouseArea.mouseX - root.dragStart.x, mouseArea.mouseY - root.dragStart.y);
-                if (dist > 8) {
-                    root.isDragging = true;
-                    root.dragStart.x = magneticSnapCoord(root.dragStart.x, 'x', 14);
-                    root.dragStart.y = magneticSnapCoord(root.dragStart.y, 'y', 14);
-                }
             }
         }
 

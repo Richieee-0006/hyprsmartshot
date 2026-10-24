@@ -42,6 +42,8 @@ export SMARTSHOT_MONITOR_Y="$MONITOR_Y"
 export SMARTSHOT_MONITOR_W="$MONITOR_W"
 export SMARTSHOT_MONITOR_H="$MONITOR_H"
 export SMARTSHOT_MONITOR_SCALE="$MONITOR_SCALE"
+MONITOR_ACTIVE_WORKSPACE=$(echo "$MONITOR_JSON" | jq -r '.activeWorkspace.id // empty' 2>/dev/null || echo "")
+export SMARTSHOT_WORKSPACE_ID="$MONITOR_ACTIVE_WORKSPACE"
 
 play_shutter() {
     canberra-gtk-play -i camera-shutter 2>/dev/null || paplay /usr/share/sounds/freedesktop/stereo/camera-shutter.oga 2>/dev/null || true
