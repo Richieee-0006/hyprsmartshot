@@ -1,120 +1,76 @@
-# 📸 HyprSmartShot
+# HyprSmartShot
 
-[![Hyprland](https://img.shields.io/badge/Hyprland-Optimized-00a4a6?style=for-the-badge&logo=archlinux&logoColor=white)](https://hyprland.org)
-[![Wayland](https://img.shields.io/badge/Wayland-Native-blue?style=for-the-badge&logo=wayland&logoColor=white)](https://wayland.freedesktop.org)
-[![Quickshell](https://img.shields.io/badge/QuickShell-v0.3.2+-41cd52?style=for-the-badge&logo=qt&logoColor=white)](https://quickshell.org)
-[![OpenCV](https://img.shields.io/badge/OpenCV-Computer_Vision-5C3EE8?style=for-the-badge&logo=opencv&logoColor=white)](https://opencv.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![Target](https://img.shields.io/badge/target-Hyprland_Wayland-89b4fa?style=flat-square)](https://hyprland.org)
+[![Toolkit](https://img.shields.io/badge/toolkit-QuickShell_Qt6-a6e3a1?style=flat-square)](https://quickshell.org)
+[![Vision](https://img.shields.io/badge/vision-OpenCV-f9e2af?style=flat-square)](https://opencv.org)
+[![Palette](https://img.shields.io/badge/palette-Pywal_Dynamic-cba6f7?style=flat-square)](https://github.com/dylanaraps/pywal)
 
-An **ultra-smart, aesthetic screenshot utility** for [Hyprland](https://hyprland.org) and Wayland compositors. 
-
-HyprSmartShot combines a polished desktop overlay interface (inspired by modern Wayland shells, featuring smooth spring physics, fragment shaders, and pywal theming) with an ultra-fast **Computer Vision engine (OpenCV)** that automatically recognizes **in-game UI interfaces, inventories, slot grids, dialogue boxes, menus, and application windows**.
+Ultra-smart screenshotovací utilita pro **Hyprland** s automatickým rozpoznáváním herních rozhraní, inventářů a oken přes Computer Vision.
 
 ---
 
-## ✨ Features
+## Přehled úprav a funkcí
 
-- 🎮 **Smart Game UI & Panel Detection**:
-  - Automatically identifies rectangular and curved UI frames, game inventories, equipment grids, healthbars, toolbars, and dialogue windows.
-  - Sub-60ms CV processing runs seamlessly in the background during the screen freeze animation.
-- 🔄 **Hierarchical Zoom (Scroll Wheel)**:
-  - Effortlessly cycle through nested UI levels:  
-    *Individual Item Slot* $\leftrightarrow$ *Inventory Bag Grid* $\leftrightarrow$ *Full Character Menu* $\leftrightarrow$ *Entire Game Window*.
-- 📐 **Universal Magnetic Snapping**:
-  - Freehand region drag magnetically snaps corners and edges to high-contrast UI borders.
-- 🪟 **Multi-Mode Control Bar**:
-  - **Universal**: In-game UI + Hyprland windows + freehand selection.
-  - **Window**: Direct Hyprland client snapping.
-  - **Region**: Freehand rectangular cropping with edge guides.
-  - **Screen**: Fullscreen snapshot.
-- 🎨 **Modern Wayland UI**:
-  - Hardware accelerated fragment shader for smooth rounded cutouts and backdrop dimming.
-  - Dynamic color scheme integration with `pywal` (`~/.cache/wal/colors.json`).
-  - Spring-damped physics on highlight boxes and pill selectors.
-- 📋 **Integrated Action Palette**:
-  - **Copy**: Instant clipboard capture (`wl-copy`).
-  - **Save**: File export to `~/Pictures/Screenshots/`.
-  - **OCR**: In-place text recognition (`tesseract`) to clipboard.
-  - **Magnifier**: Real-time pixel loupe with RGB hex display.
-
----
-
-## ⌨️ Controls & Keybindings
-
-| Key / Gesture | Action |
+| Oblast | Popis |
 | :--- | :--- |
-| **Mouse Hover** | Automatically snaps to nearest in-game panel, slot, or window |
-| **Scroll Wheel** | Drill down or expand hierarchy level (*Slot $\leftrightarrow$ Bag $\leftrightarrow$ Window*) |
-| **Left Click** | Locks selection in **Confirmation Mode** |
-| **Double Click / Enter** | Confirms & copies selection to clipboard and exits |
-| **Ctrl + S** | Confirms & saves screenshot to `~/Pictures/Screenshots/` |
-| **O** | Runs OCR on selection and copies recognized text |
-| **Alt** | Toggles pixel-zoom magnifier loupe |
-| **Right Click / Esc** | Unlocks selection / cancels and closes overlay |
-| **1 / 2 / 3 / 4** | Switches modes (*Universal / Window / Region / Screen*) |
+| **Herní UI & Inventáře** | Automatická detekce pravoúhlých i stylizovaných panelů (batohy, sloty předmětů, chatboxy, skill bary, dialogy) přes optimalizovaný OpenCV contour engine (< 60 ms). |
+| **Hierarchický zoom** | Procházení vrstev rozhraní kolečkem myši (`Scroll`) – od konkrétního slotu itemu přes grid batohu až po celou hru. |
+| **Magnetické přichytávání** | Plynulé přitahování hran při volném tažení myší k nalezeným okrajům UI prvků. |
+| **Potvrzovací režim** | Kliknutím se prvek uzamkne a zobrazí se plovoucí akční lišta (`Kopírovat`, `Uložit`, `OCR`, `Lupa`). |
+| **Optické OCR** | Okamžitá extrakce textu dialogů a popisků předmětů do schránky přes `Tesseract`. |
+| **Moderní vizuál** | Plovoucí skleněný panel (glassmorphism), fragment shader pro zaoblené výřezy a dynamické barvy z `pywal`. |
 
 ---
 
-## 🚀 Installation
+## Režimy snímání
 
-### 1. Requirements
+| Režim | Volba | Popis |
+| :--- | :--- | :--- |
+| **Smart / Herní** | `universal` (výchozí) | Detekce herních panelů, slotů i běžných oken s možností volného tažení. |
+| **Okno** | `window` | Nativní přichytávání k oknům Hyprlandu přes IPC. |
+| **Oblast** | `region` | Klasický obdélníkový výběr s magnetickým zarovnáním na hrany. |
+| **Obrazovka** | `screen` | Okamžité zachycení celého monitoru. |
 
-Ensure the following tools are available on your system:
-- `hyprland` (Wayland compositor)
-- `quickshell` (v0.2+ / v0.3+)
-- `grim` & `wl-clipboard`
-- `python3` (with `venv` module)
-- `tesseract` (optional, for OCR)
+---
 
-### 2. Clone & Setup
+## Ovládání a zkratky
 
-```bash
-# Clone into your local directory
-git clone https://github.com/Richieee-0006/hyprsmartshot.git ~/.local/share/hyprsmartshot
+| Vstup | Akce |
+| :--- | :--- |
+| **Pohyb myší** | Magnetické zvýraznění a přichycení k herním panelům, slotům nebo oknům |
+| **Kolečko myši (Scroll)** | Změna úrovně hierarchie (např. slot předmětu $\leftrightarrow$ batoh $\leftrightarrow$ celá hra) |
+| **Levé kliknutí** | **Potvrzovací režim**: Zamkne výběr a zobrazí potvrzovací lištu |
+| **Enter / Dvojklik** | Zkopírování výběru do schránky (`wl-copy`) a ukončení |
+| **Ctrl + S** | Uložení snímku do `~/Pictures/Screenshots/` a zkopírování |
+| **O** | OCR rozpoznání textu z výběru (přes `tesseract`) a zkopírování do schránky |
+| **Alt** | Zapnutí / vypnutí zvětšovací lupy s přesnými pixely |
+| **Esc / Pravé tlačítko** | Odemknutí zamčeného výběru / zrušení a zavření overlaye |
+| **1 / 2 / 3 / 4** | Přepínání režimů (Univerzální / Okno / Oblast / Obrazovka) |
 
-# Run installer
-cd ~/.local/share/hyprsmartshot
-./install.sh
-```
+---
 
-### 3. Hyprland Configuration
+## Instalace
 
-Add these keybindings to your `~/.config/hypr/hyprland.conf`:
+1. Naklonuj repozitář:
+   ```bash
+   git clone git@github.com:Richieee-0006/hyprsmartshot.git ~/.local/share/hyprsmartshot
+   ```
+
+2. Spusť instalační skript (připraví Python venv s OpenCV a vytvoří symlink do `~/.local/bin/hyprsmartshot`):
+   ```bash
+   cd ~/.local/share/hyprsmartshot
+   ./install.sh
+   ```
+
+---
+
+## Konfigurace
+
+Přidej následující řádky do souboru `~/.config/hypr/hyprland.conf`:
 
 ```ini
-# HyprSmartShot Binds
+# HyprSmartShot
 bind = , Print, exec, hyprsmartshot universal
 bind = SHIFT, Print, exec, hyprsmartshot full
 bind = CTRL, Print, exec, hyprsmartshot window
 ```
-
----
-
-## 🛠️ Project Structure
-
-```
-~/.local/share/hyprsmartshot/
-├── bin/
-│   └── hyprsmartshot        # Shell runner & freeze pipeline
-├── components/
-│   ├── ActionPill.qml       # Confirmation action palette
-│   ├── ControlBar.qml       # Top floating mode switcher
-│   ├── FreezeScreen.qml     # Wayland layer-shell overlay
-│   ├── Magnifier.qml        # Pixel loupe & color inspection
-│   ├── SmartSelector.qml    # Spring-animated selection canvas
-│   └── Theme.qml            # Pywal colors & typography
-├── shaders/
-│   ├── dimming.frag         # Fragment shader source
-│   └── dimming.frag.qsb     # Qt precompiled shader
-├── vision/
-│   └── detect_ui.py         # OpenCV hierarchical contour engine
-├── install.sh               # One-click environment installer
-├── shell.qml                # Quickshell entrypoint
-└── README.md
-```
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
