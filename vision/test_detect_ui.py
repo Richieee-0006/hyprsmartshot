@@ -4,10 +4,13 @@ Unit tests for HyprSmartShot Computer Vision UI Detector (vision/detect_ui.py)
 """
 
 import os
+import sys
 import unittest
 import tempfile
 import cv2
 import numpy as np
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from vision.detect_ui import detect_ui_elements, compute_border_contrast, cluster_slots_and_grids
 

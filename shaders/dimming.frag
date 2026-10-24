@@ -23,7 +23,8 @@ void main() {
     vec2 pixelPos = qt_TexCoord0 * screenSize;
     vec2 p = pixelPos - center;
 
-    float dist = sdRoundedBox(p, halfSize, borderRadius);
+    float r = min(borderRadius, min(halfSize.x, halfSize.y));
+    float dist = sdRoundedBox(p, halfSize, r);
 
     bool insideFilledArea = dist <= 0.0;
 

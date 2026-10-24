@@ -7,17 +7,21 @@ set -e
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FREEZE_IMG="/tmp/hyprsmartshot_freeze.png"
 BOXES_JSON="/tmp/hyprsmartshot_boxes.json"
+CLIENTS_JSON="/tmp/hyprsmartshot_clients.json"
 VENV_PYTHON="$DIR/.venv/bin/python"
 CV_SCRIPT="$DIR/vision/detect_ui.py"
 
-# Clean up stale files from previous runs and kill any lingering hyprsmartshot overlay
-quickshell kill -p "$DIR" 2>/dev/null || true
-rm -f "$FREEZE_IMG" "$BOXES_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null || true
+# Clean up stale files from previous runs and terminate any lingering hyprsmartshot overlay
+quickshell kill -p "$DIR" >/dev/null 2>&1 || true
+pkill -f "quickshell -p $DIR" >/dev/null 2>&1 || true
+rm -f "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null || true
+echo '{"boxes":[]}' > "$BOXES_JSON"
 
 # Deferred cleanup on exit to ensure detached background processes (magick, wl-copy) complete safely
 cleanup() {
-    quickshell kill -p "$DIR" 2>/dev/null || true
-    ( sleep 6 && rm -f "$FREEZE_IMG" "$BOXES_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null ) &
+    quickshell kill -p "$DIR" >/dev/null 2>&1 || true
+    pkill -f "quickshell -p $DIR" >/dev/null 2>&1 || true
+    ( sleep 8 && rm -f "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null ) &
 }
 trap cleanup EXIT INT TERM
 
@@ -73,6 +77,9 @@ else
     grim "$FREEZE_IMG"
 fi
 
+# Snapshot Hyprland client windows for instant window snapping without socket delay
+hyprctl clients -j > "$CLIENTS_JSON" 2>/dev/null || echo "[]" > "$CLIENTS_JSON"
+
 # 2. Run Computer Vision UI detection in background
 "$VENV_PYTHON" "$CV_SCRIPT" "$FREEZE_IMG" "$BOXES_JSON" &
 CV_PID=$!
@@ -85,8 +92,13 @@ case "$MODE" in
     *)      export SMARTSHOT_MODE="universal" ;;
 esac
 
-# 4. Wait for CV to finish (takes ~30-60ms, usually already done)
-wait "$CV_PID" 2>/dev/null || true
+# 4. Wait briefly for CV to finish (takes ~30-60ms, bounded to 100ms max so overlay never hangs)
+for _ in {1..10}; do
+    if ! kill -0 "$CV_PID" 2>/dev/null; then
+        break
+    fi
+    sleep 0.01
+done
 
 # 5. Launch Quickshell overlay
 quickshell -p "$DIR" || true

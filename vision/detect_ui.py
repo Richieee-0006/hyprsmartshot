@@ -104,21 +104,21 @@ def compute_border_contrast(gray, x, y, w, h):
     if x <= 1 or y <= 1 or x + w >= w_img - 2 or y + h >= h_img - 2:
         return 30.0  # Outer boundaries / screen panels are given full confidence
 
-    top_out = gray[max(0, y-3):y, x:x+w].astype(np.float32)
-    top_in = gray[y:min(h_img, y+3), x:x+w].astype(np.float32)
-    diff_t = np.abs(np.mean(top_out) - np.mean(top_in)) if top_out.size and top_in.size else 0
+    top_out = gray[max(0, y-3):y, x:x+w]
+    top_in = gray[y:min(h_img, y+3), x:x+w]
+    diff_t = abs(float(top_out.mean()) - float(top_in.mean())) if top_out.size and top_in.size else 0.0
 
-    bot_in = gray[max(0, y+h-3):y+h, x:x+w].astype(np.float32)
-    bot_out = gray[y+h:min(h_img, y+h+3), x:x+w].astype(np.float32)
-    diff_b = np.abs(np.mean(bot_in) - np.mean(bot_out)) if bot_in.size and bot_out.size else 0
+    bot_in = gray[max(0, y+h-3):y+h, x:x+w]
+    bot_out = gray[y+h:min(h_img, y+h+3), x:x+w]
+    diff_b = abs(float(bot_in.mean()) - float(bot_out.mean())) if bot_in.size and bot_out.size else 0.0
 
-    left_out = gray[y:y+h, max(0, x-3):x].astype(np.float32)
-    left_in = gray[y:y+h, x:min(w_img, x+3)].astype(np.float32)
-    diff_l = np.abs(np.mean(left_out) - np.mean(left_in)) if left_out.size and left_in.size else 0
+    left_out = gray[y:y+h, max(0, x-3):x]
+    left_in = gray[y:y+h, x:min(w_img, x+3)]
+    diff_l = abs(float(left_out.mean()) - float(left_in.mean())) if left_out.size and left_in.size else 0.0
 
-    right_in = gray[y:y+h, max(0, x+w-3):x+w].astype(np.float32)
-    right_out = gray[y:y+h, x+w:min(w_img, x+w+3)].astype(np.float32)
-    diff_r = np.abs(np.mean(right_in) - np.mean(right_out)) if right_in.size and right_out.size else 0
+    right_in = gray[y:y+h, max(0, x+w-3):x+w]
+    right_out = gray[y:y+h, x+w:min(w_img, x+w+3)]
+    diff_r = abs(float(right_in.mean()) - float(right_out.mean())) if right_in.size and right_out.size else 0.0
 
     return float((diff_t + diff_b + diff_l + diff_r) / 4.0)
 
@@ -135,7 +135,7 @@ def is_valid_border(gray, x, y, w, h):
 
     # Sample local element brightness
     roi = gray[max(0, y):min(h_img, y+h), max(0, x):min(w_img, x+w)]
-    local_mean = float(np.mean(roi)) if roi.size else 128.0
+    local_mean = float(roi.mean()) if roi.size else 128.0
 
     contrast = compute_border_contrast(gray, x, y, w, h)
 
@@ -430,8 +430,18 @@ def main():
     output_json = json.dumps(result, indent=None)
 
     if output_path:
-        with open(output_path, "w") as f:
-            f.write(output_json)
+        temp_path = f"{output_path}.tmp.{os.getpid()}"
+        try:
+            with open(temp_path, "w") as f:
+                f.write(output_json)
+            os.replace(temp_path, output_path)
+        except Exception:
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            raise
     else:
         print(output_json)
 

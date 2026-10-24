@@ -49,7 +49,8 @@ PanelWindow {
         ScreencopyView {
             anchors.fill: parent
             captureSource: root.targetScreen
-            visible: freezeImg.status !== Image.Ready
+            live: freezeImg.status !== Image.Ready
+            visible: live
             z: -1
         }
     }

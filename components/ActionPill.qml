@@ -19,15 +19,36 @@ Rectangle {
     border.color: Theme.selectionBorder
     border.width: 1.5
 
+    // Absorb clicks on pill background/padding so they do not fall through to canvas
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onPressed: (mouse) => mouse.accepted = true
+        onReleased: (mouse) => mouse.accepted = true
+        onClicked: (mouse) => mouse.accepted = true
+    }
+
     // Smooth entry animation
     opacity: 0
     scale: 0.95
-    Component.onCompleted: {
-        opacity = 1
-        scale = 1.0
+    onVisibleChanged: {
+        if (visible) {
+            opacity = 1.0;
+            scale = 1.0;
+        } else {
+            opacity = 0.0;
+            scale = 0.95;
+        }
     }
-    Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-    Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+    Component.onCompleted: {
+        if (visible) {
+            opacity = 1.0;
+            scale = 1.0;
+        }
+    }
+    Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
 
     Row {
         id: contentRow

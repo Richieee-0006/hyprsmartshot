@@ -27,8 +27,21 @@ Scope {
     }
 
     function cropCommand(x, y, width, height, destFile) {
-        const geom = grimGeometry(x, y, width, height);
-        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then magick /tmp/hyprsmartshot_freeze.png -crop ${Math.round(width)}x${Math.round(height)}+${Math.round(x)}+${Math.round(y)} +repage ${shellEscape(destFile)}; else grim -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
+        let envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
+        let envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
+        let mon = hyprlandMonitor;
+        const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
+        const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
+        const s = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_SCALE") || "1.0");
+        const scale = (s > 0) ? s : 1.0;
+
+        const geom = `${Math.round(x + ox)},${Math.round(y + oy)} ${Math.round(width)}x${Math.round(height)}`;
+        const cx = Math.round(x * scale);
+        const cy = Math.round(y * scale);
+        const cw = Math.max(1, Math.round(width * scale));
+        const ch = Math.max(1, Math.round(height * scale));
+
+        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx}+${cy} +repage ${shellEscape(destFile)}; else grim -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
     }
 
     function playShutterSound() {
@@ -36,12 +49,15 @@ Scope {
     }
 
     function closeOverlay() {
+        try {
+            freezeWindow.WlrLayershell.keyboardFocus = WlrKeyboardFocus.None;
+        } catch(e) {}
         freezeWindow.visible = false;
         try {
             Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
         } catch(e) {}
         try {
-            Quickshell.execDetached(["sh", "-c", `(sleep 0.12 && kill -9 ${Quickshell.processId} 2>/dev/null) &`]);
+            Quickshell.execDetached(["sh", "-c", `(sleep 0.15 && kill -9 ${Quickshell.processId} 2>/dev/null) &`]);
         } catch(e) {}
     }
 
@@ -135,14 +151,13 @@ Scope {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
             anchors.topMargin: 24
-            z: 20
+            z: 30
             currentMode: root.mode
             magnifierActive: root.magnifierActive
 
             onModeSelected: (modeId) => {
                 root.mode = modeId;
                 selector.mode = modeId;
-                selector.clearConfirmation();
             }
             onToggleMagnifierRequested: root.magnifierActive = !root.magnifierActive
             onCloseRequested: root.closeOverlay()
@@ -154,7 +169,7 @@ Scope {
             active: root.magnifierActive
             targetX: selector.cursorX
             targetY: selector.cursorY
-            z: 30
+            z: 40
         }
 
         // Bottom Hint Bar
@@ -169,7 +184,7 @@ Scope {
             color: Qt.rgba(0.08, 0.08, 0.10, 0.85)
             border.color: Theme.barBorder
             border.width: 1
-            z: 20
+            z: 30
 
             Text {
                 id: hintText
@@ -186,10 +201,8 @@ Scope {
         // Keyboard Handler
         Item {
             id: keyboardHandler
-            anchors.fill: parent
             focus: true
             Component.onCompleted: forceActiveFocus()
-            onActiveFocusChanged: if (!activeFocus) forceActiveFocus()
 
             Keys.onEscapePressed: (event) => {
                 event.accepted = true;
@@ -293,13 +306,13 @@ Scope {
 
                 // Modes 1..4
                 if (event.key === Qt.Key_1) {
-                    root.mode = "universal"; selector.mode = "universal"; selector.clearConfirmation();
+                    root.mode = "universal"; selector.mode = "universal";
                 } else if (event.key === Qt.Key_2) {
-                    root.mode = "window"; selector.mode = "window"; selector.clearConfirmation();
+                    root.mode = "window"; selector.mode = "window";
                 } else if (event.key === Qt.Key_3) {
-                    root.mode = "region"; selector.mode = "region"; selector.clearConfirmation();
+                    root.mode = "region"; selector.mode = "region";
                 } else if (event.key === Qt.Key_4) {
-                    root.mode = "screen"; selector.mode = "screen"; selector.clearConfirmation();
+                    root.mode = "screen"; selector.mode = "screen";
                 }
             }
         }

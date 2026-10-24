@@ -17,6 +17,7 @@ Rectangle {
     border.width: 2.5
     clip: true
     visible: active
+    enabled: false
 
     // Position near the cursor with screen boundary clamping
     x: Math.min(Math.max(targetX + 25, 10), parent ? parent.width - width - 10 : 0)
@@ -25,7 +26,7 @@ Rectangle {
     // Zoomed snapshot of the frozen screen
     Image {
         id: zoomedImage
-        source: "file:///tmp/hyprsmartshot_freeze.png"
+        source: root.active ? "file:///tmp/hyprsmartshot_freeze.png" : ""
         width: (parent && parent.parent) ? parent.parent.width * root.zoomFactor : 1920 * root.zoomFactor
         height: (parent && parent.parent) ? parent.parent.height * root.zoomFactor : 1080 * root.zoomFactor
         x: 65 - (root.targetX * root.zoomFactor)

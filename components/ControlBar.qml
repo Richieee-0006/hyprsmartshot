@@ -24,6 +24,16 @@ Rectangle {
     border.color: Theme.barBorder
     border.width: 1
 
+    // Absorb background clicks so they do not fall through to canvas
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onPressed: (mouse) => mouse.accepted = true
+        onReleased: (mouse) => mouse.accepted = true
+        onClicked: (mouse) => mouse.accepted = true
+    }
+
     // Spring-animated selection pill
     Rectangle {
         id: pillIndicator
@@ -45,9 +55,9 @@ Rectangle {
 
         Behavior on x {
             SpringAnimation {
-                spring: 4.5
-                damping: 0.28
-                mass: 1.0
+                spring: 5.5
+                damping: 0.70
+                mass: 0.8
             }
         }
     }

@@ -8,9 +8,24 @@ Item {
 
     property string mode: "universal" // "universal", "window", "region", "screen"
     property var detectedBoxes: []
+    property var cachedHyprClients: []
+    readonly property real monitorScale: {
+        const s = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_SCALE") || "1.0");
+        return (s > 0) ? s : 1.0;
+    }
     property bool isConfirmed: false
     property int currentHierarchyIndex: 0
     property var candidateHierarchy: []
+
+    onModeChanged: {
+        if (mode === "screen") {
+            setSelection(0, 0, root.width, root.height);
+            root.isConfirmed = true;
+        } else {
+            clearConfirmation();
+            updateHoverCandidates(cursorX, cursorY);
+        }
+    }
 
     // Coordinates of current active selection
     property real selectionX: 0
@@ -54,31 +69,31 @@ Item {
 
     anchors.fill: parent
 
-    // Smooth Spring Animation for target snapping (disabled during active user drag/resize/move)
-    readonly property bool springEnabled: !root.isDragging && !root.isResizing && !root.isMoving
+    // Smooth Animation for target snapping (disabled when confirmed, or during user drag/resize/move)
+    readonly property bool animationEnabled: !root.isConfirmed && !root.isDragging && !root.isResizing && !root.isMoving
 
     Behavior on selectionX {
-        enabled: root.springEnabled
-        SpringAnimation { spring: 5.0; damping: 0.32; mass: 0.9 }
+        enabled: root.animationEnabled
+        SpringAnimation { spring: 6.0; damping: 0.75; mass: 0.8 }
     }
     Behavior on selectionY {
-        enabled: root.springEnabled
-        SpringAnimation { spring: 5.0; damping: 0.32; mass: 0.9 }
+        enabled: root.animationEnabled
+        SpringAnimation { spring: 6.0; damping: 0.75; mass: 0.8 }
     }
     Behavior on selectionWidth {
-        enabled: root.springEnabled
-        SpringAnimation { spring: 5.0; damping: 0.32; mass: 0.9 }
+        enabled: root.animationEnabled
+        SpringAnimation { spring: 6.0; damping: 0.75; mass: 0.8 }
     }
     Behavior on selectionHeight {
-        enabled: root.springEnabled
-        SpringAnimation { spring: 5.0; damping: 0.32; mass: 0.9 }
+        enabled: root.animationEnabled
+        SpringAnimation { spring: 6.0; damping: 0.75; mass: 0.8 }
     }
 
     // Apply target changes to selection when not interacting
-    onTargetXChanged: if (root.springEnabled) selectionX = targetX
-    onTargetYChanged: if (root.springEnabled) selectionY = targetY
-    onTargetWChanged: if (root.springEnabled) selectionWidth = targetW
-    onTargetHChanged: if (root.springEnabled) selectionHeight = targetH
+    onTargetXChanged: if (root.animationEnabled) selectionX = targetX
+    onTargetYChanged: if (root.animationEnabled) selectionY = targetY
+    onTargetWChanged: if (root.animationEnabled) selectionWidth = targetW
+    onTargetHChanged: if (root.animationEnabled) selectionHeight = targetH
 
     function setSelection(x, y, w, h) {
         root.selectionX = x;
@@ -105,7 +120,7 @@ Item {
         setSelection(root.selectionX, root.selectionY, newW, newH);
     }
 
-    // Load CV boxes from JSON file
+    // Load CV boxes from JSON file with monitor scale normalization
     FileView {
         id: boxesFile
         path: "/tmp/hyprsmartshot_boxes.json"
@@ -113,11 +128,34 @@ Item {
             try {
                 const data = JSON.parse(text());
                 if (data && Array.isArray(data.boxes)) {
-                    root.detectedBoxes = data.boxes;
+                    const s = root.monitorScale;
+                    root.detectedBoxes = data.boxes.map(b => ({
+                        x: b.x / s,
+                        y: b.y / s,
+                        w: b.w / s,
+                        h: b.h / s,
+                        area: (b.w * b.h) / (s * s),
+                        type: b.type || "detected",
+                        depth: b.depth || 0
+                    }));
                 }
             } catch (e) {
                 console.warn("[HyprSmartShot] Failed to parse boxes JSON:", e);
             }
+        }
+    }
+
+    // Load pre-dumped Hyprland clients JSON snapshot for instant window snapping
+    FileView {
+        id: clientsFile
+        path: "/tmp/hyprsmartshot_clients.json"
+        onLoaded: {
+            try {
+                const data = JSON.parse(text());
+                if (Array.isArray(data)) {
+                    root.cachedHyprClients = data;
+                }
+            } catch (e) {}
         }
     }
 
@@ -156,7 +194,7 @@ Item {
         border.color: root.isConfirmed ? Theme.selectionBorder : Theme.snapBorder
         border.width: root.isConfirmed ? 2.5 : 2.0
         visible: width > 0 && height > 0
-        z: 2
+        z: 10
 
         // Dimensions and hierarchy tag badge
         Rectangle {
@@ -209,13 +247,14 @@ Item {
             enabled: root.isConfirmed && !root.isResizing
             hoverEnabled: true
             cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-            z: 2
+            z: 1
 
             onPressed: (mouse) => {
                 if (mouse.button === Qt.LeftButton) {
                     root.isMoving = true;
-                    root.moveMouseStartX = mouseArea.mouseX;
-                    root.moveMouseStartY = mouseArea.mouseY;
+                    const p = mapToItem(root, mouse.x, mouse.y);
+                    root.moveMouseStartX = p.x;
+                    root.moveMouseStartY = p.y;
                     root.moveOrigX = root.selectionX;
                     root.moveOrigY = root.selectionY;
                 }
@@ -223,8 +262,9 @@ Item {
 
             onPositionChanged: (mouse) => {
                 if (root.isMoving) {
-                    const dx = mouseArea.mouseX - root.moveMouseStartX;
-                    const dy = mouseArea.mouseY - root.moveMouseStartY;
+                    const p = mapToItem(root, mouse.x, mouse.y);
+                    const dx = p.x - root.moveMouseStartX;
+                    const dy = p.y - root.moveMouseStartY;
                     const newX = Math.max(0, Math.min(root.width - root.selectionWidth, root.moveOrigX + dx));
                     const newY = Math.max(0, Math.min(root.height - root.selectionHeight, root.moveOrigY + dy));
                     root.setSelection(newX, newY, root.selectionWidth, root.selectionHeight);
@@ -274,8 +314,9 @@ Item {
                         if (mouse.button === Qt.LeftButton) {
                             root.isResizing = true;
                             root.activeResizeHandle = handleItem.handleType;
-                            root.resizeMouseStartX = mouseArea.mouseX;
-                            root.resizeMouseStartY = mouseArea.mouseY;
+                            const p = mapToItem(root, mouse.x, mouse.y);
+                            root.resizeMouseStartX = p.x;
+                            root.resizeMouseStartY = p.y;
                             root.resizeOrigX = root.selectionX;
                             root.resizeOrigY = root.selectionY;
                             root.resizeOrigW = root.selectionWidth;
@@ -285,8 +326,9 @@ Item {
 
                     onPositionChanged: (mouse) => {
                         if (root.isResizing && root.activeResizeHandle === handleItem.handleType) {
-                            const dx = mouseArea.mouseX - root.resizeMouseStartX;
-                            const dy = mouseArea.mouseY - root.resizeMouseStartY;
+                            const p = mapToItem(root, mouse.x, mouse.y);
+                            const dx = p.x - root.resizeMouseStartX;
+                            const dy = p.y - root.resizeMouseStartY;
 
                             switch (handleItem.handleType) {
                                 case "NW": {
@@ -409,16 +451,22 @@ Item {
     // Confirmation Action Pill
     ActionPill {
         id: actionPill
-        z: 15
+        z: 20
         visible: root.isConfirmed && root.selectionWidth > 0 && root.selectionHeight > 0
         selectionW: Math.round(root.selectionWidth)
         selectionH: Math.round(root.selectionHeight)
 
         // Position pill smartly: below selection, or above if close to bottom
         x: Math.min(Math.max(root.selectionX + (root.selectionWidth - width) / 2, 20), root.width - width - 20)
-        y: (root.selectionY + root.selectionHeight + height + 20 < root.height)
-            ? (root.selectionY + root.selectionHeight + 12)
-            : Math.max(root.selectionY - height - 12, 60)
+        y: {
+            if (root.selectionY + root.selectionHeight + height + 20 < root.height) {
+                return root.selectionY + root.selectionHeight + 12;
+            } else if (root.selectionY - height - 12 >= 80) {
+                return root.selectionY - height - 12;
+            } else {
+                return Math.max(80, root.height - height - 70);
+            }
+        }
 
         onCopyRequested: root.copyAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onSaveRequested: root.saveAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
@@ -453,30 +501,45 @@ Item {
             }
         }
 
-        // 2. Check Hyprland OS client windows
+        // 2. Check Hyprland OS client windows (cached JSON snapshot or live IPC)
         if (root.mode === "universal" || root.mode === "window") {
-            const toplevels = Hyprland.toplevels;
-            const all = (typeof toplevels.values === 'function') ? Array.from(toplevels.values()) : (toplevels.values || toplevels);
-            if (all && all.length) {
-                const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
-                const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
-                const mon = Hyprland.focusedMonitor;
-                const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
-                const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
+            const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
+            const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
+            const mon = Hyprland.focusedMonitor;
+            const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
+            const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
+            const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
 
-                const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
-
-                for (let i = 0; i < all.length; i++) {
-                    const w = all[i];
-                    if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
-                    if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
-                    if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
-                    const wx = w.lastIpcObject.at[0] - ox;
-                    const wy = w.lastIpcObject.at[1] - oy;
-                    const ww = w.lastIpcObject.size[0];
-                    const wh = w.lastIpcObject.size[1];
+            if (root.cachedHyprClients && root.cachedHyprClients.length > 0) {
+                for (let i = 0; i < root.cachedHyprClients.length; i++) {
+                    const c = root.cachedHyprClients[i];
+                    if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
+                    if (c.hidden === true || c.mapped === false) continue;
+                    if (envWs > 0 && c.workspace && c.workspace.id !== envWs) continue;
+                    const wx = c.at[0] - ox;
+                    const wy = c.at[1] - oy;
+                    const ww = c.size[0];
+                    const wh = c.size[1];
                     if (mx >= wx && mx <= wx + ww && my >= wy && my <= wy + wh) {
                         candidates.push({ x: wx, y: wy, w: ww, h: wh, area: ww * wh, type: "window" });
+                    }
+                }
+            } else {
+                const toplevels = Hyprland.toplevels;
+                const all = (typeof toplevels.values === 'function') ? Array.from(toplevels.values()) : (toplevels.values || toplevels);
+                if (all && all.length) {
+                    for (let i = 0; i < all.length; i++) {
+                        const w = all[i];
+                        if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
+                        if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
+                        if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
+                        const wx = w.lastIpcObject.at[0] - ox;
+                        const wy = w.lastIpcObject.at[1] - oy;
+                        const ww = w.lastIpcObject.size[0];
+                        const wh = w.lastIpcObject.size[1];
+                        if (mx >= wx && mx <= wx + ww && my >= wy && my <= wy + wh) {
+                            candidates.push({ x: wx, y: wy, w: ww, h: wh, area: ww * wh, type: "window" });
+                        }
                     }
                 }
             }
@@ -590,28 +653,46 @@ Item {
             if (d2 < minDiff) { minDiff = d2; bestVal = p2; }
         }
 
-        // Snap to Hyprland client windows
-        const toplevels = Hyprland.toplevels;
-        const all = (typeof toplevels.values === 'function') ? Array.from(toplevels.values()) : (toplevels.values || toplevels);
-        if (all && all.length) {
+        // Snap to Hyprland client windows (cached snapshot or live IPC)
+        if (root.cachedHyprClients && root.cachedHyprClients.length > 0) {
             const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
             const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
             const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
-            const mon = Hyprland.focusedMonitor;
-            const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
-            const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
-
-            for (let i = 0; i < all.length; i++) {
-                const w = all[i];
-                if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
-                if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
-                if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
-                const p1 = (axis === 'x') ? (w.lastIpcObject.at[0] - ox) : (w.lastIpcObject.at[1] - oy);
-                const p2 = (axis === 'x') ? (p1 + w.lastIpcObject.size[0]) : (p1 + w.lastIpcObject.size[1]);
+            for (let i = 0; i < root.cachedHyprClients.length; i++) {
+                const c = root.cachedHyprClients[i];
+                if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
+                if (c.hidden === true || c.mapped === false) continue;
+                if (envWs > 0 && c.workspace && c.workspace.id !== envWs) continue;
+                const p1 = (axis === 'x') ? (c.at[0] - envOx) : (c.at[1] - envOy);
+                const p2 = (axis === 'x') ? (p1 + c.size[0]) : (p1 + c.size[1]);
                 const d1 = Math.abs(val - p1);
                 const d2 = Math.abs(val - p2);
                 if (d1 < minDiff) { minDiff = d1; bestVal = p1; }
                 if (d2 < minDiff) { minDiff = d2; bestVal = p2; }
+            }
+        } else {
+            const toplevels = Hyprland.toplevels;
+            const all = (typeof toplevels.values === 'function') ? Array.from(toplevels.values()) : (toplevels.values || toplevels);
+            if (all && all.length) {
+                const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
+                const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
+                const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
+                const mon = Hyprland.focusedMonitor;
+                const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
+                const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
+
+                for (let i = 0; i < all.length; i++) {
+                    const w = all[i];
+                    if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
+                    if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
+                    if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
+                    const p1 = (axis === 'x') ? (w.lastIpcObject.at[0] - ox) : (w.lastIpcObject.at[1] - oy);
+                    const p2 = (axis === 'x') ? (p1 + w.lastIpcObject.size[0]) : (p1 + w.lastIpcObject.size[1]);
+                    const d1 = Math.abs(val - p1);
+                    const d2 = Math.abs(val - p2);
+                    if (d1 < minDiff) { minDiff = d1; bestVal = p1; }
+                    if (d2 < minDiff) { minDiff = d2; bestVal = p2; }
+                }
             }
         }
 
@@ -625,7 +706,7 @@ Item {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         cursorShape: root.isConfirmed ? Qt.ArrowCursor : Qt.CrossCursor
-        z: 3
+        z: 1
 
         onPositionChanged: (mouse) => {
             if (mouse.buttons & Qt.LeftButton) {
@@ -694,6 +775,7 @@ Item {
             } else if (!root.isConfirmed && root.selectionWidth > 15 && root.selectionHeight > 15) {
                 // Click locked on candidate box (Confirmation mode)
                 root.isConfirmed = true;
+                root.setSelection(root.targetX, root.targetY, root.targetW, root.targetH);
                 root.selectionConfirmed(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight);
             }
         }
