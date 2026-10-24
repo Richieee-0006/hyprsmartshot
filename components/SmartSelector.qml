@@ -184,6 +184,9 @@ Item {
                             if (cur.type === "grid_container") prefix = "Grid 󰕰 • ";
                             else if (cur.type === "grid_row") prefix = "Řádek 󰒉 • ";
                             else if (cur.type === "window") prefix = "Okno 󱂬 • ";
+                            else if (cur.type === "slot") prefix = "Slot 󰏫 • ";
+                            else if (cur.type === "panel") prefix = "Panel 󱂬 • ";
+                            else if (cur.type === "button") prefix = "Tlačítko 󰐥 • ";
                         }
                         return `${prefix}${dim}  •  ${root.currentHierarchyIndex + 1}/${root.candidateHierarchy.length} [Scroll 󰒉]`;
                     }
@@ -462,6 +465,9 @@ Item {
         }
 
         if (candidates.length === 0) {
+            root.candidateHierarchy = [];
+            root.targetW = 0;
+            root.targetH = 0;
             return;
         }
 
@@ -483,12 +489,19 @@ Item {
             if (!dup) unique.push(c);
         }
 
-        root.candidateHierarchy = unique;
-
-        // Clamp hierarchy index
-        if (root.currentHierarchyIndex >= unique.length) {
+        // Reset hierarchy index if hovering a new leaf element
+        const smallestChanged = (root.candidateHierarchy.length === 0 ||
+                                 unique[0].x !== root.candidateHierarchy[0].x ||
+                                 unique[0].y !== root.candidateHierarchy[0].y ||
+                                 unique[0].w !== root.candidateHierarchy[0].w ||
+                                 unique[0].h !== root.candidateHierarchy[0].h);
+        if (smallestChanged) {
+            root.currentHierarchyIndex = 0;
+        } else if (root.currentHierarchyIndex >= unique.length) {
             root.currentHierarchyIndex = 0;
         }
+
+        root.candidateHierarchy = unique;
 
         const selected = unique[root.currentHierarchyIndex];
         if (selected) {
@@ -542,6 +555,13 @@ Item {
     function magneticSnapCoord(val, axis, threshold) {
         let bestVal = val;
         let minDiff = threshold;
+
+        // Screen boundary snapping
+        const maxBoundary = (axis === 'x') ? root.width : root.height;
+        if (Math.abs(val - 0) < minDiff) { minDiff = Math.abs(val - 0); bestVal = 0; }
+        if (Math.abs(val - maxBoundary) < minDiff) { minDiff = Math.abs(val - maxBoundary); bestVal = maxBoundary; }
+
+        // Snap to CV detected boxes
         for (let i = 0; i < root.detectedBoxes.length; i++) {
             const b = root.detectedBoxes[i];
             const p1 = (axis === 'x') ? b.x : b.y;
@@ -551,6 +571,29 @@ Item {
             if (d1 < minDiff) { minDiff = d1; bestVal = p1; }
             if (d2 < minDiff) { minDiff = d2; bestVal = p2; }
         }
+
+        // Snap to Hyprland client windows
+        const toplevels = Hyprland.toplevels;
+        const all = (typeof toplevels.values === 'function') ? Array.from(toplevels.values()) : (toplevels.values || toplevels);
+        if (all && all.length) {
+            const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
+            const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
+            const mon = Hyprland.focusedMonitor;
+            const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
+            const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
+
+            for (let i = 0; i < all.length; i++) {
+                const w = all[i];
+                if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
+                const p1 = (axis === 'x') ? (w.lastIpcObject.at[0] - ox) : (w.lastIpcObject.at[1] - oy);
+                const p2 = (axis === 'x') ? (p1 + w.lastIpcObject.size[0]) : (p1 + w.lastIpcObject.size[1]);
+                const d1 = Math.abs(val - p1);
+                const d2 = Math.abs(val - p2);
+                if (d1 < minDiff) { minDiff = d1; bestVal = p1; }
+                if (d2 < minDiff) { minDiff = d2; bestVal = p2; }
+            }
+        }
+
         return bestVal;
     }
 

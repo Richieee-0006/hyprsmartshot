@@ -35,6 +35,14 @@ Scope {
         Quickshell.execDetached(["sh", "-c", "canberra-gtk-play -i camera-shutter 2>/dev/null || paplay /usr/share/sounds/freedesktop/stereo/camera-shutter.oga 2>/dev/null || true"]);
     }
 
+    function closeOverlay() {
+        freezeWindow.visible = false;
+        try {
+            Qt.quit();
+        } catch(e) {}
+        Quickshell.execDetached(["kill", Quickshell.processId.toString()]);
+    }
+
     function doCopy(x, y, width, height) {
         const tempCrop = `/tmp/hyprsmartshot_crop_${Date.now()}.png`;
         const crop = cropCommand(x, y, width, height, tempCrop);
@@ -42,7 +50,7 @@ Scope {
         playShutterSound();
         freezeWindow.triggerFlash(() => {
             Quickshell.execDetached(["sh", "-c", cmd]);
-            Quickshell.exit(0);
+            root.closeOverlay();
         });
     }
 
@@ -55,7 +63,7 @@ Scope {
         playShutterSound();
         freezeWindow.triggerFlash(() => {
             Quickshell.execDetached(["sh", "-c", cmd]);
-            Quickshell.exit(0);
+            root.closeOverlay();
         });
     }
 
@@ -81,7 +89,7 @@ Scope {
         playShutterSound();
         freezeWindow.triggerFlash(() => {
             Quickshell.execDetached(["sh", "-c", cmd]);
-            Quickshell.exit(0);
+            root.closeOverlay();
         });
     }
 
@@ -92,13 +100,14 @@ Scope {
         playShutterSound();
         freezeWindow.triggerFlash(() => {
             Quickshell.execDetached(["sh", "-c", cmd]);
-            Quickshell.exit(0);
+            root.closeOverlay();
         });
     }
 
     // FreezeScreen overlay window
     FreezeScreen {
         id: freezeWindow
+        onVisibleChanged: if (visible && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
 
         SmartSelector {
             id: selector
@@ -108,7 +117,7 @@ Scope {
             onSaveAction: (x, y, w, h) => root.doSave(x, y, w, h)
             onAnnotateAction: (x, y, w, h) => root.doAnnotate(x, y, w, h)
             onOcrAction: (x, y, w, h) => root.doOcr(x, y, w, h)
-            onCancelRequested: Quickshell.exit(0)
+            onCancelRequested: root.closeOverlay()
         }
 
         // Top Floating Control Bar
@@ -127,7 +136,7 @@ Scope {
                 selector.clearConfirmation();
             }
             onToggleMagnifierRequested: root.magnifierActive = !root.magnifierActive
-            onCloseRequested: Quickshell.exit(0)
+            onCloseRequested: root.closeOverlay()
         }
 
         // Magnifier Loupe
@@ -167,12 +176,16 @@ Scope {
 
         // Keyboard Handler
         Item {
+            id: keyboardHandler
+            anchors.fill: parent
             focus: true
+            Component.onCompleted: forceActiveFocus()
+
             Keys.onEscapePressed: {
                 if (selector.isConfirmed) {
                     selector.clearConfirmation();
                 } else {
-                    Quickshell.exit(0);
+                    root.closeOverlay();
                 }
             }
             Keys.onReturnPressed: {

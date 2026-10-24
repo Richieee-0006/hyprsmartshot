@@ -22,6 +22,7 @@ PanelWindow {
 
     screen: targetScreen
     exclusionMode: ExclusionMode.Ignore
+    focusable: true
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "quickshell-screenshot"
     WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive

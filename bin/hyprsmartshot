@@ -10,14 +10,16 @@ BOXES_JSON="/tmp/hyprsmartshot_boxes.json"
 VENV_PYTHON="$DIR/.venv/bin/python"
 CV_SCRIPT="$DIR/vision/detect_ui.py"
 
-# Clean up stale files from previous runs
+# Clean up stale files from previous runs and kill any lingering hyprsmartshot overlay
+quickshell kill -p "$DIR" 2>/dev/null || true
 rm -f "$FREEZE_IMG" "$BOXES_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null || true
 
 # Deferred cleanup on exit to ensure detached background processes (magick, wl-copy) complete safely
 cleanup() {
+    quickshell kill -p "$DIR" 2>/dev/null || true
     ( sleep 6 && rm -f "$FREEZE_IMG" "$BOXES_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null ) &
 }
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 MODE="${1:-universal}"
 
@@ -85,4 +87,4 @@ esac
 wait "$CV_PID" 2>/dev/null || true
 
 # 5. Launch Quickshell overlay
-quickshell -p "$DIR"
+quickshell -p "$DIR" || true
