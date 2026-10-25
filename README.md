@@ -8,36 +8,6 @@
 
 An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprland** on Wayland. HyprSmartShot harnesses high-performance Computer Vision (OpenCV) to detect in-game interface panels, inventory grids, individual item slots, dialogue windows, and floating desktop overlays in real time.
 
-> **Repository Description**:  
-> *Ultra-smart screenshot utility for Hyprland with Computer Vision-driven UI & game inventory detection, hierarchical zoom, and instant annotation.*  
->  
-> **Recommended Topics**:  
-> `hyprland`, `wayland`, `screenshot`, `computer-vision`, `opencv`, `quickshell`, `qml`, `satty`, `ocr`, `tesseract`, `game-ui`, `inventory-detection`, `linux`, `cachyos`
-
----
-
-## Architecture & Workflow
-
-```mermaid
-flowchart TD
-    A["User triggers Keybind (Print / Universal)"] --> B["grim captures raw screen snapshot"]
-    B --> C["FreezeScreen locks Wayland display (zero flicker)"]
-    B --> D["detect_ui.py (CLAHE + Canny + Bilateral + Contours)"]
-    B --> E["Hyprland IPC (Client windows & Floating Z-order)"]
-    D --> F["JSON Boxes & Hierarchy Tree"]
-    E --> F
-    F --> G["QuickShell QML Overlay"]
-    G --> H["Hover with Spring Animation & Magnetic Snapping"]
-    H --> I["Hierarchy Cycle (Mouse Wheel Zoom)"]
-    H --> J["Freehand Drag with Magnetic Edge Snapping"]
-    G --> K["Click locks Selection (Confirmation Mode)"]
-    K --> L["Interactive Action Toolbar spawned under Cursor"]
-    L --> M["Copy to Clipboard (wl-copy)"]
-    L --> N["Save to ~/Pictures/Screenshots"]
-    L --> O["Satty v0.22+ Annotation Modal"]
-    L --> P["Tesseract OCR Text Extraction"]
-```
-
 ---
 
 ## Features
