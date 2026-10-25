@@ -4,6 +4,7 @@
 [![Toolkit](https://img.shields.io/badge/toolkit-QuickShell_Qt6-a6e3a1?style=flat-square)](https://quickshell.org)
 [![Vision](https://img.shields.io/badge/vision-OpenCV-f9e2af?style=flat-square&logo=opencv&logoColor=black)](https://opencv.org)
 [![Palette](https://img.shields.io/badge/palette-Catppuccin_&_Pywal-cba6f7?style=flat-square)](https://github.com/dylanaraps/pywal)
+[![CI](https://github.com/Richieee-0006/hyprsmartshot/actions/workflows/ci.yml/badge.svg)](https://github.com/Richieee-0006/hyprsmartshot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
 An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprland** on Wayland. HyprSmartShot harnesses high-performance Computer Vision (OpenCV) to detect in-game interface panels, inventory grids, individual item slots, dialogue windows, and floating desktop overlays in real time.

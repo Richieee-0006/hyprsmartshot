@@ -1,0 +1,32 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Package & Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build release tarball
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCHIVE="hyprsmartshot-${VERSION}.tar.gz"
+          tar --exclude="./.git*" --exclude="./.venv*" --exclude="./*.tmp*" -czf "$ARCHIVE" .
+          sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            hyprsmartshot-*.tar.gz
+            hyprsmartshot-*.tar.gz.sha256
+          generate_release_notes: true
