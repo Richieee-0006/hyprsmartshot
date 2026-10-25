@@ -1,0 +1,40 @@
+{
+  "modeSmart": "Smart",
+  "modeScreen": "Obrazovka",
+
+  "copy": "Kopírovat",
+  "save": "Uložit",
+  "annotate": "Anotovat",
+  "ocr": "OCR",
+  "cancel": "Zrušit",
+  "close": "Zavřít",
+
+  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  󰒉 [Šipky] Doladit  •  [Alt+Šipky] Velikost  •  [Esc] Zrušit",
+  "hintUnconfirmed": "󰓥 [Klik] Potvrdit výběr  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko] Hloubka / Grid  •  󰍉 [Alt] Lupa  •  [1-2] Režimy  •  [Esc] Zavřít",
+
+  "tagGrid": "Grid 󰕰 • ",
+  "tagRow": "Řádek 󰒉 • ",
+  "tagFloating": "Plovoucí",
+  "tagWindow": "Okno",
+  "tagSlot": "Slot 󰏫 • ",
+  "tagItem": "Předmět 󰆦 • ",
+  "tagPanel": "Panel 󱂬 • ",
+  "tagButton": "Tlačítko 󰐥 • ",
+  "tagScreen": "Obrazovka 󰍹 • ",
+  "scrollHint": "[Kolečko 󰒉]",
+
+  "copyTitle": "Screenshot zkopírován",
+  "copyDesc": "Výřez byl zkopírován do schránky",
+  "saveTitle": "Screenshot uložen",
+  "saveDesc": "Uloženo do {path} a zkopírováno",
+  "fullscreenTitle": "Fullscreen zachycen",
+  "fullscreenDesc": "Uloženo do {path} a zkopírováno",
+  "annotateNotFoundTitle": "Anotační editor nenalezen",
+  "annotateNotFoundDesc": "Výřez byl zkopírován do schránky.",
+  "ocrTitle": "OCR dokončeno",
+  "ocrDesc": "Rozpoznaný text byl zkopírován do schránky",
+  "ocrNoTextTitle": "Výsledek OCR",
+  "ocrNoTextDesc": "Ve výběru nebyl rozpoznán žádný text",
+  "ocrNotFoundTitle": "OCR nástroj nenalezen",
+  "ocrNotFoundDesc": "Tesseract není nainstalován. Výřez byl zkopírován jako obrázek."
+}

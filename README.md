@@ -114,6 +114,73 @@ The installer automatically:
 
 ## Configuration
 
+### Localization & Internationalization (i18n)
+
+HyprSmartShot features a generic, dynamic internationalization architecture. While **English (`en`)** (default) and **Czech (`cs`)** are bundled out of the box as reference translations, **any arbitrary language code `{lang}`** (e.g., `de`, `fr`, `es`, `pl`, `ja`, etc.) is dynamically supported without requiring code changes.
+
+#### Configuration
+
+Language preference is resolved in the following priority order:
+1. Environment variable: `SMARTSHOT_LANG` (e.g., `SMARTSHOT_LANG=de hyprsmartshot universal`)
+2. User JSON config: `~/.config/hyprsmartshot/config.json`
+3. User TOML config: `~/.config/hyprsmartshot/config.toml`
+4. Bundled fallback: `config/hyprsmartshot/config.json` (defaults to `"en"`)
+
+Example `~/.config/hyprsmartshot/config.json`:
+```json
+{
+  "language": "en"
+}
+```
+
+Example `~/.config/hyprsmartshot/config.toml`:
+```toml
+language = "en"
+```
+
+#### How Users Can Add or Customize Languages
+
+You can easily add your own language or override existing phrases locally without touching repository files:
+
+1. **Create the user localization folder**:
+   ```bash
+   mkdir -p ~/.config/hyprsmartshot/localization
+   ```
+
+2. **Copy the English reference template**:
+   ```bash
+   cp ~/.local/share/hyprsmartshot/localization/en.json ~/.config/hyprsmartshot/localization/<lang>.json
+   # Example for German:
+   cp ~/.local/share/hyprsmartshot/localization/en.json ~/.config/hyprsmartshot/localization/de.json
+   ```
+
+3. **Translate the values** in your new `<lang>.json` file.
+
+4. **Activate the language**:
+   Set `"language": "<lang>"` in `~/.config/hyprsmartshot/config.json` (or `language = "<lang>"` in `config.toml`), or test immediately:
+   ```bash
+   SMARTSHOT_LANG=de hyprsmartshot universal
+   ```
+
+#### Graceful Key Fallback
+
+HyprSmartShot guarantees seamless partial translation support:
+- If any key is missing in your custom or community language file, the system automatically falls back to `en.json` (and internal compiled defaults).
+- Regional language tags (e.g. `cs_CZ` or `de_AT`) automatically fall back to the corresponding base language (`cs`, `de`) before falling back to English.
+- Buttons and notifications will never disappear, break, or display blank labels.
+
+#### Contributing a New Language (Community PRs Welcome!)
+
+Community translations are warmly encouraged! To submit a new language upstream:
+
+1. Add your language file `localization/<lang>.json` directly to the `localization/` directory (use `localization/en.json` as a reference).
+2. Validate formatting and key parity with existing tests:
+   ```bash
+   python3 tests/test_i18n.py
+   ```
+3. Open a Pull Request!
+
+
 ### Hyprland Lua Configuration
 
 Hyprland natively uses Lua scripting. Add the keybindings and window rules to your configuration (e.g., `~/.config/hypr/hyprland.lua` or under `~/.config/hypr/modules/`):

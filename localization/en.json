@@ -1,0 +1,40 @@
+{
+  "modeSmart": "Smart",
+  "modeScreen": "Screen",
+
+  "copy": "Copy",
+  "save": "Save",
+  "annotate": "Annotate",
+  "ocr": "OCR",
+  "cancel": "Cancel",
+  "close": "Close",
+
+  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Copy  •  󰆓 [Ctrl+S] Save  •  󰏫 [A] Annotate  •  󰉐 [O] OCR  •  󰒉 [Arrows] Fine-tune  •  [Alt+Arrows] Resize  •  [Esc] Cancel",
+  "hintUnconfirmed": "󰓥 [Click] Confirm  •  [Drag] Custom region  •  󰒉 [Scroll] Depth / Grid  •  󰍉 [Alt] Magnifier  •  [1-2] Modes  •  [Esc] Close",
+
+  "tagGrid": "Grid 󰕰 • ",
+  "tagRow": "Row 󰒉 • ",
+  "tagFloating": "Floating",
+  "tagWindow": "Window",
+  "tagSlot": "Slot 󰏫 • ",
+  "tagItem": "Item 󰆦 • ",
+  "tagPanel": "Panel 󱂬 • ",
+  "tagButton": "Button 󰐥 • ",
+  "tagScreen": "Screen 󰍹 • ",
+  "scrollHint": "[Scroll 󰒉]",
+
+  "copyTitle": "Screenshot Copied",
+  "copyDesc": "Selection copied to clipboard",
+  "saveTitle": "Screenshot Saved",
+  "saveDesc": "Saved to {path} and copied to clipboard",
+  "fullscreenTitle": "Fullscreen Captured",
+  "fullscreenDesc": "Saved to {path} and copied to clipboard",
+  "annotateNotFoundTitle": "Annotation Editor Not Found",
+  "annotateNotFoundDesc": "Selection copied to clipboard.",
+  "ocrTitle": "OCR Completed",
+  "ocrDesc": "Recognized text copied to clipboard",
+  "ocrNoTextTitle": "OCR Result",
+  "ocrNoTextDesc": "No text detected in selection",
+  "ocrNotFoundTitle": "OCR Tool Not Found",
+  "ocrNotFoundDesc": "Tesseract not installed. Image copied to clipboard."
+}

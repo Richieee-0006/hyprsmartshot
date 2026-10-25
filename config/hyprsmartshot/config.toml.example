@@ -1,0 +1,7 @@
+# HyprSmartShot configuration
+# Location: ~/.config/hyprsmartshot/config.toml (or config.json)
+
+# User interface and notification language code (e.g. "en", "cs", "de", "fr", "pl", etc.)
+# Automatically loads localization/{lang}.json (and user overrides from ~/.config/hyprsmartshot/localization/{lang}.json).
+# Missing keys cleanly fall back to English.
+language = "en"

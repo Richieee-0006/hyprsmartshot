@@ -217,27 +217,10 @@ Item {
                 anchors.centerIn: parent
                 text: {
                     const dim = `${Math.round(root.selectionWidth)} × ${Math.round(root.selectionHeight)}`;
-                    let prefix = "";
                     const cur = root.candidateHierarchy[root.currentHierarchyIndex];
-                    if (cur) {
-                        if (cur.type === "grid_container") prefix = "Grid 󰕰 • ";
-                        else if (cur.type === "grid_row") prefix = "Řádek 󰒉 • ";
-                        else if (cur.type === "floating_window") {
-                            const name = cur.title ? cur.title.slice(0, 16) : (cur.class || "Plovoucí");
-                            prefix = `Plovoucí [${name}] 󱂬 • `;
-                        }
-                        else if (cur.type === "window") {
-                            const name = cur.title ? cur.title.slice(0, 16) : (cur.class || "Okno");
-                            prefix = `Okno [${name}] 󱂬 • `;
-                        }
-                        else if (cur.type === "slot") prefix = "Slot 󰏫 • ";
-                        else if (cur.type === "item") prefix = "Předmět 󰆦 • ";
-                        else if (cur.type === "panel") prefix = "Panel 󱂬 • ";
-                        else if (cur.type === "button") prefix = "Tlačítko 󰐥 • ";
-                        else if (cur.type === "screen") prefix = "Obrazovka 󰍹 • ";
-                    }
+                    const prefix = I18n.formatCandidatePrefix(cur);
                     if (root.candidateHierarchy.length > 1) {
-                        return `${prefix}${dim}  •  ${root.currentHierarchyIndex + 1}/${root.candidateHierarchy.length} [Scroll 󰒉]`;
+                        return `${prefix}${dim}  •  ${root.currentHierarchyIndex + 1}/${root.candidateHierarchy.length} ${I18n.t("scrollHint")}`;
                     }
                     return `${prefix}${dim}`;
                 }

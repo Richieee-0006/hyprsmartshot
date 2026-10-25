@@ -12,6 +12,66 @@ VENV_PYTHON="$DIR/.venv/bin/python"
 CV_SCRIPT="$DIR/vision/detect_ui.py"
 CLEANUP_PID_FILE="/tmp/hyprsmartshot_cleanup.pid"
 
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hyprsmartshot"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+CONFIG_TOML="$CONFIG_DIR/config.toml"
+DEFAULT_CONFIG="$DIR/config/hyprsmartshot/config.json"
+
+# Resolve language preference (default: "en", with dynamic arbitrary language code support)
+if [ -z "$SMARTSHOT_LANG" ]; then
+    if [ -f "$CONFIG_FILE" ]; then
+        SMARTSHOT_LANG=$(jq -r '.language // empty' "$CONFIG_FILE" 2>/dev/null || true)
+    fi
+    if [ -z "$SMARTSHOT_LANG" ] && [ -f "$CONFIG_TOML" ]; then
+        SMARTSHOT_LANG=$(grep -E '^\s*language\s*=' "$CONFIG_TOML" 2>/dev/null | sed -E 's/.*=\s*["'\'']?([^"'\'']+)["'\'']?.*/\1/' || true)
+    fi
+    if [ -z "$SMARTSHOT_LANG" ] && [ -f "$DEFAULT_CONFIG" ]; then
+        SMARTSHOT_LANG=$(jq -r '.language // empty' "$DEFAULT_CONFIG" 2>/dev/null || true)
+    fi
+fi
+# Sanitize language code (strip encoding like .UTF-8/whitespace, allow only alphanumeric, underscores, hyphens)
+SMARTSHOT_LANG="${SMARTSHOT_LANG%%.*}"
+SMARTSHOT_LANG=$(echo "$SMARTSHOT_LANG" | tr -d '[:space:]')
+if [[ ! "$SMARTSHOT_LANG" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+    SMARTSHOT_LANG="en"
+fi
+export SMARTSHOT_LANG
+export SMARTSHOT_DIR="$DIR"
+
+get_translation() {
+    local key="$1"
+    local default_val="$2"
+    local lang="${SMARTSHOT_LANG:-en}"
+    local base_lang="${lang%%[_-]*}"
+
+    local search_files=(
+        "$CONFIG_DIR/localization/${lang}.json"
+        "$DIR/localization/${lang}.json"
+    )
+    if [ -n "$base_lang" ] && [ "$base_lang" != "$lang" ]; then
+        search_files+=(
+            "$CONFIG_DIR/localization/${base_lang}.json"
+            "$DIR/localization/${base_lang}.json"
+        )
+    fi
+    search_files+=(
+        "$CONFIG_DIR/localization/en.json"
+        "$DIR/localization/en.json"
+    )
+
+    local val=""
+    for f in "${search_files[@]}"; do
+        if [ -f "$f" ]; then
+            val=$(jq -r --arg k "$key" '.[$k] // empty' "$f" 2>/dev/null || true)
+            if [ -n "$val" ] && [ "$val" != "null" ]; then
+                echo "$val"
+                return 0
+            fi
+        fi
+    done
+    echo "$default_val"
+}
+
 # Kill any lingering background cleanup from previous runs to prevent deleting the new freeze image
 if [ -f "$CLEANUP_PID_FILE" ]; then
     OLD_CLEANUP_PID=$(cat "$CLEANUP_PID_FILE" 2>/dev/null || true)
@@ -77,7 +137,11 @@ if [ "$MODE" = "full" ]; then
     fi
     play_shutter &
     wl-copy --type image/png < "$FILEPATH"
-    notify-send -a "HyprSmartShot" -i "$FILEPATH" "Fullscreen zachycen" "Uloženo do $FILEPATH a zkopírováno"
+    FS_TITLE=$(get_translation "fullscreenTitle" "Fullscreen Captured")
+    FS_DESC_FMT=$(get_translation "fullscreenDesc" "Saved to {path} and copied to clipboard")
+    shopt -u patsub_replacement 2>/dev/null || true
+    FS_DESC="${FS_DESC_FMT/\{path\}/$FILEPATH}"
+    notify-send -a "HyprSmartShot" -i "$FILEPATH" "$FS_TITLE" "$FS_DESC"
     exit 0
 fi
 

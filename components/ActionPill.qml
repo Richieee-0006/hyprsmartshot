@@ -109,7 +109,7 @@ Rectangle {
                     color: "#ffffff"
                 }
                 Text {
-                    text: "Kopírovat"
+                    text: I18n.t("copy")
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
@@ -146,7 +146,7 @@ Rectangle {
                     color: Theme.text
                 }
                 Text {
-                    text: "Uložit"
+                    text: I18n.t("save")
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     color: Theme.text
@@ -182,7 +182,7 @@ Rectangle {
                     color: Theme.text
                 }
                 Text {
-                    text: "Anotovat"
+                    text: I18n.t("annotate")
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     color: Theme.text
@@ -218,7 +218,7 @@ Rectangle {
                     color: Theme.text
                 }
                 Text {
-                    text: "OCR"
+                    text: I18n.t("ocr")
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     color: Theme.text

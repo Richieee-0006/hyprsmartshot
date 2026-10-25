@@ -35,6 +35,14 @@ if [ ! -f "$HOME/.config/satty/config.toml" ]; then
     cp "$DIR/config/satty/config.toml" "$HOME/.config/satty/config.toml"
 fi
 
+# 5. HyprSmartShot configuration template
+CONFIG_DIR="$HOME/.config/hyprsmartshot"
+mkdir -p "$CONFIG_DIR/localization"
+if [ ! -f "$CONFIG_DIR/config.json" ] && [ ! -f "$CONFIG_DIR/config.toml" ]; then
+    echo "==> Installing default HyprSmartShot config..."
+    cp "$DIR/config/hyprsmartshot/config.json" "$CONFIG_DIR/config.json"
+fi
+
 echo ""
 echo "✨ HyprSmartShot installed successfully!"
 echo "   Binary linked to: $BIN_DIR/hyprsmartshot"

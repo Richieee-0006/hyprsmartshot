@@ -64,7 +64,9 @@ Scope {
     function doCopy(x, y, width, height) {
         const tempCrop = `/tmp/hyprsmartshot_crop_${Date.now()}.png`;
         const crop = cropCommand(x, y, width, height, tempCrop);
-        const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} "Screenshot zkopírován" "Výřez byl uložen do schránky" && rm -f ${shellEscape(tempCrop)}`;
+        const title = I18n.t("copyTitle");
+        const desc = I18n.t("copyDesc");
+        const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && rm -f ${shellEscape(tempCrop)}`;
         playShutterSound();
         Quickshell.execDetached(["sh", "-c", cmd]);
         root.closeOverlay();
@@ -75,7 +77,9 @@ Scope {
         const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
         const outputPath = `${saveDir}/screenshot-${timestamp}.png`;
         const crop = cropCommand(x, y, width, height, outputPath);
-        const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} "Screenshot uložen" "Uloženo do ${outputPath} a zkopírováno"`;
+        const title = I18n.t("saveTitle");
+        const desc = I18n.t("saveDesc").replace("{path}", outputPath);
+        const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)}`;
         playShutterSound();
         Quickshell.execDetached(["sh", "-c", cmd]);
         root.closeOverlay();
@@ -87,6 +91,8 @@ Scope {
         const outputPath = `${saveDir}/annotation-${timestamp}.png`;
         const tempCrop = `/tmp/hyprsmartshot_annot_${Date.now()}.png`;
         const crop = cropCommand(x, y, width, height, tempCrop);
+        const notFoundTitle = I18n.t("annotateNotFoundTitle");
+        const notFoundDesc = I18n.t("annotateNotFoundDesc");
 
         const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && {
             if command -v satty >/dev/null 2>&1; then
@@ -95,7 +101,7 @@ Scope {
                 swappy -f ${shellEscape(tempCrop)} -o ${shellEscape(outputPath)}
             else
                 wl-copy --type image/png < ${shellEscape(tempCrop)}
-                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} "Anotační editor nenalezen" "Výřez byl zkopírován do schránky."
+                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
             fi
             rm -f ${shellEscape(tempCrop)}
         } &`;
@@ -108,7 +114,28 @@ Scope {
     function doOcr(x, y, width, height) {
         const tempCrop = `/tmp/hyprsmartshot_ocr_${Date.now()}.png`;
         const crop = cropCommand(x, y, width, height, tempCrop);
-        const cmd = `${crop} && tesseract ${shellEscape(tempCrop)} stdout -l eng+ces 2>/dev/null | wl-copy && notify-send -a "HyprSmartShot" "OCR dokončeno" "Rozpoznaný text byl zkopírován do schránky" && rm -f ${shellEscape(tempCrop)}`;
+        const ocrTitle = I18n.t("ocrTitle");
+        const ocrDesc = I18n.t("ocrDesc");
+        const ocrNoTextTitle = I18n.t("ocrNoTextTitle");
+        const ocrNoTextDesc = I18n.t("ocrNoTextDesc");
+        const notFoundTitle = I18n.t("ocrNotFoundTitle");
+        const notFoundDesc = I18n.t("ocrNotFoundDesc");
+
+        const cmd = `${crop} && {
+            if command -v tesseract >/dev/null 2>&1; then
+                TEXT=$(tesseract ${shellEscape(tempCrop)} stdout -l eng+ces 2>/dev/null || true)
+                if [ -n "$TEXT" ]; then
+                    printf "%s" "$TEXT" | wl-copy
+                    notify-send -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)}
+                else
+                    notify-send -a "HyprSmartShot" ${shellEscape(ocrNoTextTitle)} ${shellEscape(ocrNoTextDesc)}
+                fi
+            else
+                wl-copy --type image/png < ${shellEscape(tempCrop)}
+                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
+            fi
+            rm -f ${shellEscape(tempCrop)}
+        }`;
         playShutterSound();
         Quickshell.execDetached(["sh", "-c", cmd]);
         root.closeOverlay();
@@ -181,9 +208,7 @@ Scope {
             Text {
                 id: hintText
                 anchors.centerIn: parent
-                text: selector.isConfirmed
-                    ? "󰆏 [Enter] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  󰒉 [Šipky] Doladit  •  [Alt+Šipky] Velikost  •  [Esc] Zrušit"
-                    : "󰓥 [Klik] Potvrdit výběr  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko] Hloubka / Grid  •  󰍉 [Alt] Lupa  •  [1-2] Režimy  •  [Esc] Zavřít"
+                text: selector.isConfirmed ? I18n.t("hintConfirmed") : I18n.t("hintUnconfirmed")
                 font.family: Theme.fontFamily
                 font.pixelSize: 11
                 color: Theme.textSubtle

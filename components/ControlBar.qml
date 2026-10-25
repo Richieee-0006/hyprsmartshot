@@ -7,8 +7,8 @@ Rectangle {
     property bool magnifierActive: false
 
     readonly property var modes: [
-        { id: "universal", label: "Smart",     icon: "󰓥" },
-        { id: "screen",    label: "Obrazovka", icon: "󰍹" }
+        { id: "universal", label: I18n.t("modeSmart"),  icon: "󰓥" },
+        { id: "screen",    label: I18n.t("modeScreen"), icon: "󰍹" }
     ]
 
     signal modeSelected(string modeId)
