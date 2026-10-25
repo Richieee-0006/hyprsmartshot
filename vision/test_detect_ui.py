@@ -360,9 +360,14 @@ class TestUIDetector(unittest.TestCase):
         # Check that a box spanning the combined body (~960px wide, ~600px high at y=80) exists
         full_body_candidates = [
             b for b in res["boxes"]
-            if b["w"] >= 850 and b["h"] >= 500 and b["y"] <= 100
+            if b["w"] >= 850 and b["h"] >= 500 and 65 <= b["y"] <= 100
         ]
-        self.assertGreaterEqual(len(full_body_candidates), 1, "Expected full web page body candidate to be detected")
+        self.assertGreaterEqual(len(full_body_candidates), 1, "Expected full web page body candidate starting below header to be detected")
+        window_candidates = [
+            b for b in res["boxes"]
+            if b["w"] >= 990 and b["h"] >= 690 and b["y"] == 0
+        ]
+        self.assertGreaterEqual(len(window_candidates), 1, "Expected outer browser window to be preserved in hierarchy")
 
     def test_workspace_and_monitor_filtering(self):
         img = np.full((600, 800, 3), 30, dtype=np.uint8)
@@ -398,6 +403,171 @@ class TestUIDetector(unittest.TestCase):
             self.assertNotIn("kitty1", titles, "Inactive workspace window must NOT be included")
             self.assertNotIn("kitty2", titles, "Inactive workspace window must NOT be included")
             self.assertNotIn("OtherMon", titles, "Off-monitor window must NOT be included")
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_workspace_filtering_active_and_pinned(self):
+        img = np.full((600, 800, 3), 30, dtype=np.uint8)
+        path = self._save_img("ws_active.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "clients_active.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([
+                {"at": [0, 0], "size": [400, 600], "workspace": {"id": 1}, "title": "term_split_left", "class": "kitty"},
+                {"at": [400, 0], "size": [400, 600], "workspace": {"id": 1}, "title": "term_split_right", "class": "kitty"},
+                {"at": [0, 0], "size": [800, 600], "workspace": {"id": 2}, "title": "active_browser", "class": "firefox"},
+                {"at": [100, 100], "size": [250, 200], "workspace": {"id": 3}, "pinned": True, "title": "pip_player"},
+                {"at": [50, 50], "size": [300, 300], "workspace": {"id": 2}, "hidden": True, "title": "hidden_window"},
+                {"at": [50, 50], "size": [300, 300], "workspace": {"id": 2}, "mapped": False, "title": "unmapped_window"},
+                {"at": [1920, 0], "size": [800, 600], "workspace": {"id": 2}, "title": "offscreen_window"}
+            ], f)
+
+        old_env = os.environ.copy()
+        try:
+            os.environ["SMARTSHOT_WORKSPACE_ID"] = "2"
+            os.environ["SMARTSHOT_MONITOR_X"] = "0"
+            os.environ["SMARTSHOT_MONITOR_Y"] = "0"
+
+            res = detect_ui_elements(path, clients_path=clients_json)
+            client_boxes = [b for b in res["boxes"] if b.get("is_client")]
+            titles = [b.get("title") for b in client_boxes]
+
+            self.assertIn("active_browser", titles, "Active workspace window should be included")
+            self.assertIn("pip_player", titles, "Pinned window should be included regardless of workspace")
+            self.assertNotIn("term_split_left", titles, "Inactive workspace window must be excluded")
+            self.assertNotIn("term_split_right", titles, "Inactive workspace window must be excluded")
+            self.assertNotIn("hidden_window", titles, "Hidden window must be excluded")
+            self.assertNotIn("unmapped_window", titles, "Unmapped window must be excluded")
+            self.assertNotIn("offscreen_window", titles, "Off-monitor window must be excluded")
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_workspace_filtering_unset_retains_all(self):
+        img = np.full((600, 800, 3), 30, dtype=np.uint8)
+        path = self._save_img("ws_unset.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "clients_unset.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([
+                {"at": [0, 0], "size": [400, 600], "workspace": {"id": 1}, "title": "term_ws1"},
+                {"at": [400, 0], "size": [400, 600], "workspace": {"id": 2}, "title": "browser_ws2"},
+            ], f)
+
+        old_env = os.environ.copy()
+        try:
+            os.environ.pop("SMARTSHOT_WORKSPACE_ID", None)
+            os.environ["SMARTSHOT_MONITOR_X"] = "0"
+            os.environ["SMARTSHOT_MONITOR_Y"] = "0"
+
+            res = detect_ui_elements(path, clients_path=clients_json)
+            client_boxes = [b for b in res["boxes"] if b.get("is_client")]
+            titles = [b.get("title") for b in client_boxes]
+
+            self.assertIn("term_ws1", titles, "When workspace ID is unset, ws1 window should be retained")
+            self.assertIn("browser_ws2", titles, "When workspace ID is unset, ws2 window should be retained")
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
+
+    def test_cluster_adjacent_columns_with_gutter_gap(self):
+        col1 = {"x": 50, "y": 100, "w": 380, "h": 500, "area": 190000, "type": "panel", "contrast": 30.0}
+        col2 = {"x": 454, "y": 100, "w": 380, "h": 500, "area": 190000, "type": "panel", "contrast": 30.0} # gap = 24px
+
+        unions = cluster_adjacent_columns([col1, col2])
+        self.assertEqual(len(unions), 1, "Columns separated by 24px gutter should cluster into union")
+        u = unions[0]
+        self.assertEqual(u["x"], 50)
+        self.assertEqual(u["y"], 100)
+        self.assertEqual(u["w"], 784)
+        self.assertEqual(u["h"], 500)
+
+    def test_cluster_adjacent_columns_exceeding_gap_threshold(self):
+        col1 = {"x": 50, "y": 100, "w": 300, "h": 500, "area": 150000, "type": "panel", "contrast": 30.0}
+        col2 = {"x": 410, "y": 100, "w": 300, "h": 500, "area": 150000, "type": "panel", "contrast": 30.0} # gap = 60px > 40px
+
+        unions = cluster_adjacent_columns([col1, col2])
+        self.assertEqual(len(unions), 0, "Columns separated by >40px margin should not cluster")
+
+    def test_cluster_adjacent_columns_height_mismatch(self):
+        col1 = {"x": 50, "y": 100, "w": 400, "h": 600, "area": 240000, "type": "panel", "contrast": 30.0}
+        col2 = {"x": 450, "y": 300, "w": 400, "h": 300, "area": 120000, "type": "panel", "contrast": 30.0}
+
+        unions = cluster_adjacent_columns([col1, col2])
+        self.assertEqual(len(unions), 0, "Panels with different heights/offsets should not cluster")
+
+    def test_browser_content_viewport_offset_window(self):
+        gray = np.full((700, 1000), 240, dtype=np.uint8)
+        # Window at (100, 50, 800, 600), header from y=50 to y=120
+        gray[50:120, 100:900] = 35
+        client_box = [{"x": 100, "y": 50, "w": 800, "h": 600, "title": "Chromium", "class": "chromium"}]
+
+        content_boxes = detect_window_content_areas(gray, client_box)
+        self.assertGreaterEqual(len(content_boxes), 1)
+        cb = content_boxes[0]
+        self.assertEqual(cb["x"], 100)
+        self.assertEqual(cb["w"], 800)
+        self.assertTrue(118 <= cb["y"] <= 122)
+        self.assertTrue(528 <= cb["h"] <= 532)
+
+    def test_browser_content_viewport_no_demarcation(self):
+        gray = np.full((600, 800), 230, dtype=np.uint8)
+        client_box = [{"x": 0, "y": 0, "w": 800, "h": 600, "title": "Terminal", "class": "foot"}]
+
+        content_boxes = detect_window_content_areas(gray, client_box)
+        self.assertEqual(len(content_boxes), 0, "Uniform window should produce no content viewport")
+
+    def test_browser_content_viewport_small_window_ignored(self):
+        gray = np.full((400, 500), 230, dtype=np.uint8)
+        gray[0:60, :] = 40
+        client_box = [{"x": 0, "y": 0, "w": 250, "h": 180, "title": "Popup", "class": "popup"}]
+
+        content_boxes = detect_window_content_areas(gray, client_box)
+        self.assertEqual(len(content_boxes), 0, "Windows smaller than 300x200 should be ignored")
+
+    def test_browser_split_page_body_e2e_coexistence(self):
+        img = np.full((700, 1000, 3), 40, dtype=np.uint8)
+        cv2.rectangle(img, (20, 80), (500, 680), (255, 255, 255), -1)
+        cv2.rectangle(img, (20, 80), (500, 680), (180, 180, 180), 1)
+        cv2.rectangle(img, (500, 80), (980, 680), (245, 245, 245), -1)
+        cv2.rectangle(img, (500, 80), (980, 680), (180, 180, 180), 1)
+
+        path = self._save_img("browser_e2e.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "clients_e2e.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([{"at": [0, 0], "size": [1000, 700], "title": "Web Browser", "class": "zen-browser", "workspace": {"id": 1}}], f)
+
+        old_env = os.environ.copy()
+        try:
+            os.environ["SMARTSHOT_WORKSPACE_ID"] = "1"
+            os.environ["SMARTSHOT_MONITOR_X"] = "0"
+            os.environ["SMARTSHOT_MONITOR_Y"] = "0"
+
+            res = detect_ui_elements(path, clients_path=clients_json)
+            boxes = res["boxes"]
+
+            # 1. Full browser window exists
+            win_boxes = [b for b in boxes if b.get("is_client") and b["w"] == 1000 and b["h"] == 700]
+            self.assertEqual(len(win_boxes), 1, "Browser window should be detected")
+
+            # 2. Both columns exist
+            left_col = [b for b in boxes if abs(b["x"] - 20) <= 8 and abs(b["y"] - 80) <= 8 and abs(b["w"] - 480) <= 16]
+            right_col = [b for b in boxes if abs(b["x"] - 500) <= 8 and abs(b["y"] - 80) <= 8 and abs(b["w"] - 480) <= 16]
+            self.assertGreaterEqual(len(left_col), 1, "Left column candidate should be detected")
+            self.assertGreaterEqual(len(right_col), 1, "Right column candidate should be detected")
+
+            # 3. Web page body / viewport candidate exists below the toolbar (y ~ 80, not y=0!)
+            body_candidates = [
+                b for b in boxes
+                if 60 <= b["y"] <= 95 and b["w"] >= 850 and b["h"] >= 500
+            ]
+            self.assertGreaterEqual(len(body_candidates), 1, "Expected full web page body candidate below toolbar to be detected and preserved")
+
+            # 4. Hierarchy depth check: window (depth 0) < page body (depth 1) <= columns (depth 2+)
+            self.assertEqual(win_boxes[0]["depth"], 0, "Browser window should be depth 0")
+            self.assertGreater(body_candidates[0]["depth"], win_boxes[0]["depth"], "Body viewport must be deeper than window")
         finally:
             os.environ.clear()
             os.environ.update(old_env)

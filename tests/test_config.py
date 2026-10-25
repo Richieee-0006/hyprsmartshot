@@ -83,11 +83,35 @@ class TestConfiguration(unittest.TestCase):
         # Ensure TOML is not referenced in Config.qml
         self.assertNotIn("config.toml", content.lower())
 
+    def test_qmldir_singleton_config_registered(self):
+        qmldir_path = os.path.join(REPO_DIR, "components", "qmldir")
+        self.assertTrue(os.path.isfile(qmldir_path), f"Missing {qmldir_path}")
+        with open(qmldir_path, "r", encoding="utf-8") as f:
+            lines = [line.strip() for line in f if line.strip()]
+        self.assertIn("singleton Config 1.0 Config.qml", lines,
+                      "components/qmldir must register singleton Config 1.0 Config.qml")
+
+    def test_shell_qml_action_defensive_cleanup(self):
+        shell_qml = os.path.join(REPO_DIR, "shell.qml")
+        self.assertTrue(os.path.isfile(shell_qml))
+        with open(shell_qml, "r", encoding="utf-8") as f:
+            content = f.read()
+        for action in ["function doCopy", "function doSave", "function doAnnotate", "function doOcr"]:
+            self.assertIn(action, content, f"Action {action} missing in shell.qml")
+        self.assertIn("finally {", content)
+        self.assertIn("root.closeOverlay();", content)
+        self.assertIn("function shellEscape(s)", content, "shellEscape must be defined in shell.qml")
+
     def test_qmllint_components(self):
         if not shutil.which("qmllint"):
             self.skipTest("qmllint not installed in environment")
+        qml_files = [os.path.join(REPO_DIR, "shell.qml")]
+        comp_dir = os.path.join(REPO_DIR, "components")
+        for f in sorted(os.listdir(comp_dir)):
+            if f.endswith(".qml"):
+                qml_files.append(os.path.join(comp_dir, f))
         proc = subprocess.run(
-            ["qmllint", "shell.qml", "components/Config.qml", "components/I18n.qml"],
+            ["qmllint"] + qml_files,
             cwd=REPO_DIR,
             capture_output=True,
             text=True,
