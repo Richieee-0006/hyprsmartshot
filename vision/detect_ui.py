@@ -58,11 +58,27 @@ def deduplicate_boxes(boxes, iou_thresh=0.72, contain_thresh=0.88):
     for b in sorted_boxes:
         merged = False
         for existing in deduped:
+            # Prevent client window from swallowing internal content viewport/panels
+            if bool(existing.get("is_client")) != bool(b.get("is_client")):
+                continue
+
             iou = compute_iou(b, existing)
             contain = compute_containment(b, existing)
             size_diff = abs(b['w'] - existing['w']) + abs(b['h'] - existing['h'])
             min_dim = min(b['w'], b['h'], existing['w'], existing['h'])
             max_size_diff = min(28, max(5, int(min_dim * 0.42)))
+
+            # Measure edge distance between candidate and existing box
+            edge_x1 = abs(b['x'] - existing['x'])
+            edge_y1 = abs(b['y'] - existing['y'])
+            edge_x2 = abs((b['x'] + b['w']) - (existing['x'] + existing['w']))
+            edge_y2 = abs((b['y'] + b['h']) - (existing['y'] + existing['h']))
+            max_edge_diff = max(edge_x1, edge_y1, edge_x2, edge_y2)
+
+            # Never merge distinct structural regions (such as full window vs browser body below toolbar).
+            # A genuine multi-pixel border artifact has edge differences <= 25px.
+            if max_edge_diff > 25:
+                continue
 
             # If two boxes have high IoU or one almost entirely contains the other with minor size difference
             if iou >= iou_thresh or (contain >= contain_thresh and size_diff <= max_size_diff):
