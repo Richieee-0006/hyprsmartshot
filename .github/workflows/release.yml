@@ -20,7 +20,7 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           ARCHIVE="hyprsmartshot-${VERSION}.tar.gz"
-          tar --exclude="./.git*" --exclude="./.venv*" --exclude="**/__pycache__" --exclude="./*.tmp*" --exclude="./*.sha256" -czf "/tmp/$ARCHIVE" .
+          tar --exclude="./.git*" --exclude="./.venv*" --exclude="**/__pycache__" --exclude="./*.tmp*" --exclude="./*.sha256" --transform "s,^\.,hyprsmartshot-${VERSION}," -czf "/tmp/$ARCHIVE" .
           mv "/tmp/$ARCHIVE" .
           sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
 

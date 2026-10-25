@@ -41,7 +41,7 @@ Scope {
         const cw = Math.max(1, Math.round(width * scale));
         const ch = Math.max(1, Math.round(height * scale));
 
-        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx}+${cy} +repage ${shellEscape(destFile)}; else grim -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
+        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then if command -v magick >/dev/null 2>&1; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx}+${cy} +repage ${shellEscape(destFile)}; else convert /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx}+${cy} +repage ${shellEscape(destFile)}; fi; else grim -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
     }
 
     function playShutterSound() {
