@@ -5,6 +5,7 @@ Unit tests for HyprSmartShot configuration (config.json, OCR settings, post-capt
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -83,6 +84,8 @@ class TestConfiguration(unittest.TestCase):
         self.assertNotIn("config.toml", content.lower())
 
     def test_qmllint_components(self):
+        if not shutil.which("qmllint"):
+            self.skipTest("qmllint not installed in environment")
         proc = subprocess.run(
             ["qmllint", "shell.qml", "components/Config.qml", "components/I18n.qml"],
             cwd=REPO_DIR,
