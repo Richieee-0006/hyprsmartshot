@@ -62,88 +62,108 @@ Scope {
     }
 
     function doCopy(x, y, width, height) {
-        const tempCrop = `/tmp/hyprsmartshot_crop_${Date.now()}.png`;
-        const crop = cropCommand(x, y, width, height, tempCrop);
-        const title = I18n.t("copyTitle");
-        const desc = I18n.t("copyDesc");
-        const hook = Config.postCopyHook ? Config.postCopyHook.trim() : "";
-        const hookCmd = hook ? ` (${hook.replace(/\{path\}/g, shellEscape(tempCrop))});` : "";
-        const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && {${hookCmd} rm -f ${shellEscape(tempCrop)}; }`;
-        playShutterSound();
-        Quickshell.execDetached(["sh", "-c", cmd]);
-        root.closeOverlay();
+        try {
+            const tempCrop = `/tmp/hyprsmartshot_crop_${Date.now()}.png`;
+            const crop = cropCommand(x, y, width, height, tempCrop);
+            const title = I18n.t("copyTitle");
+            const desc = I18n.t("copyDesc");
+            const hook = (typeof Config !== "undefined" && Config && Config.postCopyHook) ? Config.postCopyHook.trim() : "";
+            const hookCmd = hook ? ` (${hook.replace(/\{path\}/g, shellEscape(tempCrop))});` : "";
+            const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && {${hookCmd} rm -f ${shellEscape(tempCrop)}; }`;
+            playShutterSound();
+            Quickshell.execDetached(["sh", "-c", cmd]);
+        } catch (e) {
+            console.error("[HyprSmartShot] Error in doCopy:", e);
+        } finally {
+            root.closeOverlay();
+        }
     }
 
     function doSave(x, y, width, height) {
-        const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
-        const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
-        const outputPath = `${saveDir}/screenshot-${timestamp}.png`;
-        const crop = cropCommand(x, y, width, height, outputPath);
-        const title = I18n.t("saveTitle");
-        const desc = I18n.t("saveDesc").replace("{path}", outputPath);
-        const hook = Config.postSaveHook ? Config.postSaveHook.trim() : "";
-        const hookCmd = hook ? ` && (${hook.replace(/\{path\}/g, shellEscape(outputPath))})` : "";
-        const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)}${hookCmd}`;
-        playShutterSound();
-        Quickshell.execDetached(["sh", "-c", cmd]);
-        root.closeOverlay();
+        try {
+            const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
+            const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
+            const outputPath = `${saveDir}/screenshot-${timestamp}.png`;
+            const crop = cropCommand(x, y, width, height, outputPath);
+            const title = I18n.t("saveTitle");
+            const desc = I18n.t("saveDesc").replace("{path}", outputPath);
+            const hook = (typeof Config !== "undefined" && Config && Config.postSaveHook) ? Config.postSaveHook.trim() : "";
+            const hookCmd = hook ? ` && (${hook.replace(/\{path\}/g, shellEscape(outputPath))})` : "";
+            const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)}${hookCmd}`;
+            playShutterSound();
+            Quickshell.execDetached(["sh", "-c", cmd]);
+        } catch (e) {
+            console.error("[HyprSmartShot] Error in doSave:", e);
+        } finally {
+            root.closeOverlay();
+        }
     }
 
     function doAnnotate(x, y, width, height) {
-        const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
-        const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
-        const outputPath = `${saveDir}/annotation-${timestamp}.png`;
-        const tempCrop = `/tmp/hyprsmartshot_annot_${Date.now()}.png`;
-        const crop = cropCommand(x, y, width, height, tempCrop);
-        const notFoundTitle = I18n.t("annotateNotFoundTitle");
-        const notFoundDesc = I18n.t("annotateNotFoundDesc");
+        try {
+            const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
+            const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
+            const outputPath = `${saveDir}/annotation-${timestamp}.png`;
+            const tempCrop = `/tmp/hyprsmartshot_annot_${Date.now()}.png`;
+            const crop = cropCommand(x, y, width, height, tempCrop);
+            const notFoundTitle = I18n.t("annotateNotFoundTitle");
+            const notFoundDesc = I18n.t("annotateNotFoundDesc");
 
-        const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && {
-            if command -v satty >/dev/null 2>&1; then
-                satty --filename ${shellEscape(tempCrop)} --output-filename ${shellEscape(outputPath)} --early-exit --copy-command "wl-copy --type image/png" --initial-tool brush
-            elif command -v swappy >/dev/null 2>&1; then
-                swappy -f ${shellEscape(tempCrop)} -o ${shellEscape(outputPath)}
-            else
-                wl-copy --type image/png < ${shellEscape(tempCrop)}
-                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
-            fi
-            rm -f ${shellEscape(tempCrop)}
-        } &`;
+            const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && {
+                if command -v satty >/dev/null 2>&1; then
+                    satty --filename ${shellEscape(tempCrop)} --output-filename ${shellEscape(outputPath)} --early-exit --copy-command "wl-copy --type image/png" --initial-tool brush
+                elif command -v swappy >/dev/null 2>&1; then
+                    swappy -f ${shellEscape(tempCrop)} -o ${shellEscape(outputPath)}
+                else
+                    wl-copy --type image/png < ${shellEscape(tempCrop)}
+                    notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
+                fi
+                rm -f ${shellEscape(tempCrop)}
+            } &`;
 
-        playShutterSound();
-        Quickshell.execDetached(["sh", "-c", cmd]);
-        root.closeOverlay();
+            playShutterSound();
+            Quickshell.execDetached(["sh", "-c", cmd]);
+        } catch (e) {
+            console.error("[HyprSmartShot] Error in doAnnotate:", e);
+        } finally {
+            root.closeOverlay();
+        }
     }
 
     function doOcr(x, y, width, height) {
-        const tempCrop = `/tmp/hyprsmartshot_ocr_${Date.now()}.png`;
-        const crop = cropCommand(x, y, width, height, tempCrop);
-        const ocrTitle = I18n.t("ocrTitle");
-        const ocrDesc = I18n.t("ocrDesc");
-        const ocrNoTextTitle = I18n.t("ocrNoTextTitle");
-        const ocrNoTextDesc = I18n.t("ocrNoTextDesc");
-        const notFoundTitle = I18n.t("ocrNotFoundTitle");
-        const notFoundDesc = I18n.t("ocrNotFoundDesc");
-        const ocrLangs = (Config.ocrLanguages && Config.ocrLanguages.trim().length > 0) ? Config.ocrLanguages.trim() : "eng+ces";
+        try {
+            const tempCrop = `/tmp/hyprsmartshot_ocr_${Date.now()}.png`;
+            const crop = cropCommand(x, y, width, height, tempCrop);
+            const ocrTitle = I18n.t("ocrTitle");
+            const ocrDesc = I18n.t("ocrDesc");
+            const ocrNoTextTitle = I18n.t("ocrNoTextTitle");
+            const ocrNoTextDesc = I18n.t("ocrNoTextDesc");
+            const notFoundTitle = I18n.t("ocrNotFoundTitle");
+            const notFoundDesc = I18n.t("ocrNotFoundDesc");
+            const ocrLangs = (typeof Config !== "undefined" && Config && Config.ocrLanguages && Config.ocrLanguages.trim().length > 0) ? Config.ocrLanguages.trim() : "eng+ces";
 
-        const cmd = `${crop} && {
-            if command -v tesseract >/dev/null 2>&1; then
-                TEXT=$(tesseract ${shellEscape(tempCrop)} stdout -l ${shellEscape(ocrLangs)} 2>/dev/null || true)
-                if [ -n "$TEXT" ]; then
-                    printf "%s" "$TEXT" | wl-copy
-                    notify-send -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)}
+            const cmd = `${crop} && {
+                if command -v tesseract >/dev/null 2>&1; then
+                    TEXT=$(tesseract ${shellEscape(tempCrop)} stdout -l ${shellEscape(ocrLangs)} 2>/dev/null || true)
+                    if [ -n "$TEXT" ]; then
+                        printf "%s" "$TEXT" | wl-copy
+                        notify-send -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)}
+                    else
+                        notify-send -a "HyprSmartShot" ${shellEscape(ocrNoTextTitle)} ${shellEscape(ocrNoTextDesc)}
+                    fi
                 else
-                    notify-send -a "HyprSmartShot" ${shellEscape(ocrNoTextTitle)} ${shellEscape(ocrNoTextDesc)}
+                    wl-copy --type image/png < ${shellEscape(tempCrop)}
+                    notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
                 fi
-            else
-                wl-copy --type image/png < ${shellEscape(tempCrop)}
-                notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
-            fi
-            rm -f ${shellEscape(tempCrop)}
-        }`;
-        playShutterSound();
-        Quickshell.execDetached(["sh", "-c", cmd]);
-        root.closeOverlay();
+                rm -f ${shellEscape(tempCrop)}
+            }`;
+            playShutterSound();
+            Quickshell.execDetached(["sh", "-c", cmd]);
+        } catch (e) {
+            console.error("[HyprSmartShot] Error in doOcr:", e);
+        } finally {
+            root.closeOverlay();
+        }
     }
 
     FreezeScreen {

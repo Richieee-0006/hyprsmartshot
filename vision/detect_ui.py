@@ -276,6 +276,105 @@ def cluster_slots_and_grids(boxes):
 
     return clean_rows + grids
 
+def cluster_adjacent_columns(boxes):
+    """
+    Detects adjacent columns or split panels (e.g. left and right halves of a web page
+    or multi-column layout) and synthesizes their union into a combined parent container.
+    """
+    panels = [b for b in boxes if b.get('w', 0) >= 80 and b.get('h', 0) >= 100 and b.get('type') in ('panel', 'detected', 'grid_container')]
+    if len(panels) < 2:
+        return []
+
+    panels_sorted = sorted(panels, key=lambda p: (p['y'], p['x']))
+    unions = []
+
+    for i, p1 in enumerate(panels_sorted):
+        for j in range(i + 1, len(panels_sorted)):
+            p2 = panels_sorted[j]
+            y_diff = abs(p1['y'] - p2['y'])
+            h_diff = abs(p1['h'] - p2['h'])
+            min_h = min(p1['h'], p2['h'])
+
+            # Must share similar vertical span (within 10% height tolerance or 16px)
+            if y_diff <= max(12, int(min_h * 0.10)) and h_diff <= max(16, int(min_h * 0.10)):
+                p_left, p_right = (p1, p2) if p1['x'] <= p2['x'] else (p2, p1)
+                gap = p_right['x'] - (p_left['x'] + p_left['w'])
+
+                # Gap between adjacent columns can be 0 (divider line) or a small margin (up to 40px)
+                if -6 <= gap <= 40:
+                    ux = p_left['x']
+                    uy = min(p_left['y'], p_right['y'])
+                    uw = (p_right['x'] + p_right['w']) - ux
+                    uh = max(p_left['y'] + p_left['h'], p_right['y'] + p_right['h']) - uy
+                    u_area = uw * uh
+
+                    if u_area > max(p1['area'], p2['area']) * 1.25:
+                        unions.append({
+                            'x': int(ux),
+                            'y': int(uy),
+                            'w': int(uw),
+                            'h': int(uh),
+                            'area': int(u_area),
+                            'extent': 0.98,
+                            'contrast': max(p1.get('contrast', 25.0), p2.get('contrast', 25.0)),
+                            'type': 'panel'
+                        })
+
+    return unions
+
+def detect_window_content_areas(gray, client_boxes):
+    """
+    Detects the main content viewport below the header/URL bar in application windows
+    (e.g., browsers, editors) so users can select the full page body without tabs and URL bar.
+    """
+    content_boxes = []
+    h_img, w_img = gray.shape
+
+    for win in client_boxes:
+        wx = max(0, int(win.get('x', 0)))
+        wy = max(0, int(win.get('y', 0)))
+        ww = min(w_img - wx, int(win.get('w', 0)))
+        wh = min(h_img - wy, int(win.get('h', 0)))
+
+        if ww < 300 or wh < 200:
+            continue
+
+        header_min_y = wy + 40
+        header_max_y = wy + min(160, int(wh * 0.35))
+        if header_max_y <= header_min_y or header_max_y >= h_img:
+            continue
+
+        sub_gray = gray[header_min_y:header_max_y, wx:wx + ww]
+        if sub_gray.shape[0] < 5 or sub_gray.shape[1] < 100:
+            continue
+
+        # Horizontal gradient across the full window width
+        row_diffs = np.mean(np.abs(np.diff(sub_gray.astype(np.float32), axis=0)), axis=1)
+        if len(row_diffs) == 0:
+            continue
+
+        best_row_idx = int(np.argmax(row_diffs))
+        max_diff = float(row_diffs[best_row_idx])
+
+        if max_diff >= 3.5:
+            sep_y = header_min_y + best_row_idx + 1
+            body_h = (wy + wh) - sep_y
+            if body_h >= 100:
+                content_boxes.append({
+                    "x": int(wx),
+                    "y": int(sep_y),
+                    "w": int(ww),
+                    "h": int(body_h),
+                    "area": int(ww * body_h),
+                    "extent": 1.0,
+                    "contrast": 35.0,
+                    "type": "panel",
+                    "title": win.get("title", ""),
+                    "class": win.get("class", "")
+                })
+
+    return content_boxes
+
 def is_duplicate(a, b, tol=5):
     """Checks whether box a and box b are virtually identical."""
     return (abs(a['x'] - b['x']) <= tol and
@@ -332,10 +431,18 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     contours, _ = cv2.findContours(combined, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
 
     raw_boxes = []
+    client_boxes = []
 
     # Pre-seed visible Hyprland client windows (especially floating overlay windows)
     if clients_path and os.path.isfile(clients_path):
         try:
+            active_ws_str = os.environ.get("SMARTSHOT_WORKSPACE_ID", "").strip()
+            active_ws = int(active_ws_str) if active_ws_str.lstrip("-").isdigit() else None
+            mon_x_str = os.environ.get("SMARTSHOT_MONITOR_X", "").strip()
+            mon_y_str = os.environ.get("SMARTSHOT_MONITOR_Y", "").strip()
+            mon_x = int(float(mon_x_str)) if mon_x_str else 0
+            mon_y = int(float(mon_y_str)) if mon_y_str else 0
+
             with open(clients_path, "r") as cf:
                 clients_data = json.load(cf)
                 if isinstance(clients_data, list):
@@ -344,14 +451,23 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                             continue
                         if c.get("hidden") is True or c.get("mapped") is False:
                             continue
+                        is_pinned = bool(c.get("pinned", False))
+                        if active_ws is not None and not is_pinned:
+                            ws = c.get("workspace", {})
+                            ws_id = ws.get("id") if isinstance(ws, dict) else None
+                            if ws_id is not None and ws_id != active_ws:
+                                continue
                         at = c.get("at", [])
                         size = c.get("size", [])
                         if len(at) == 2 and len(size) == 2:
-                            cx, cy = int(at[0]), int(at[1])
+                            cx, cy = int(at[0]) - mon_x, int(at[1]) - mon_y
                             cw, ch = int(size[0]), int(size[1])
                             if cw >= 20 and ch >= 20:
+                                # Skip windows outside current monitor viewport
+                                if cx + cw <= 0 or cx >= orig_w or cy + ch <= 0 or cy >= orig_h:
+                                    continue
                                 is_fl = bool(c.get("floating", False))
-                                raw_boxes.append({
+                                win_obj = {
                                     "x": int(cx),
                                     "y": int(cy),
                                     "w": int(cw),
@@ -366,7 +482,9 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                                     "title": c.get("title", ""),
                                     "class": c.get("class", ""),
                                     "is_client": True
-                                })
+                                }
+                                raw_boxes.append(win_obj)
+                                client_boxes.append(win_obj)
         except Exception:
             pass
 
@@ -447,7 +565,14 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
 
     # 3. Synthesize inventory rows and grid containers from clean slots
     synthesized = cluster_slots_and_grids(deduped_raw)
-    all_boxes = deduped_raw + synthesized
+
+    # 3b. Synthesize composite panels / columns into unified parent containers (web page body / split panels)
+    column_unions = cluster_adjacent_columns(deduped_raw)
+
+    # 3c. Detect window content viewports (web page body below browser header)
+    window_content_areas = detect_window_content_areas(gray, client_boxes)
+
+    all_boxes = deduped_raw + synthesized + column_unions + window_content_areas
 
     # 4. Final deduplication pass to merge synthesized grids with detected panels
     final_deduped = deduplicate_boxes(all_boxes, iou_thresh=0.80, contain_thresh=0.90)

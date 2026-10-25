@@ -1,5 +1,6 @@
 singleton Theme 1.0 Theme.qml
 singleton I18n 1.0 I18n.qml
+singleton Config 1.0 Config.qml
 ControlBar 1.0 ControlBar.qml
 ActionPill 1.0 ActionPill.qml
 SmartSelector 1.0 SmartSelector.qml

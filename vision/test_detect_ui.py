@@ -12,7 +12,13 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 try:
     import cv2
     import numpy as np
-    from vision.detect_ui import detect_ui_elements, compute_border_contrast, cluster_slots_and_grids
+    from vision.detect_ui import (
+        detect_ui_elements,
+        compute_border_contrast,
+        cluster_slots_and_grids,
+        cluster_adjacent_columns,
+        detect_window_content_areas,
+    )
     HAS_CV2 = True
 except ImportError:
     HAS_CV2 = False
@@ -304,6 +310,97 @@ class TestUIDetector(unittest.TestCase):
 
         rows = [b for b in res["boxes"] if b["type"] == "grid_row"]
         self.assertGreaterEqual(len(rows), 1, "Expected clustered grid_row for small slots")
+
+    def test_cluster_adjacent_columns(self):
+        col1 = {"x": 50, "y": 80, "w": 400, "h": 600, "area": 240000, "type": "panel", "contrast": 30.0}
+        col2 = {"x": 450, "y": 80, "w": 400, "h": 600, "area": 240000, "type": "panel", "contrast": 30.0}
+
+        unions = cluster_adjacent_columns([col1, col2])
+        self.assertEqual(len(unions), 1, "Expected 1 synthesized union panel for adjacent columns")
+        u = unions[0]
+        self.assertEqual(u["x"], 50)
+        self.assertEqual(u["y"], 80)
+        self.assertEqual(u["w"], 800)
+        self.assertEqual(u["h"], 600)
+        self.assertEqual(u["area"], 480000)
+
+    def test_browser_window_content_viewport_detection(self):
+        # 800x600 image: 0-80 is dark header (value 40), 80-600 is light page body (value 230)
+        gray = np.full((600, 800), 230, dtype=np.uint8)
+        gray[0:80, :] = 40
+
+        client_box = [{"x": 0, "y": 0, "w": 800, "h": 600, "title": "Mozilla Firefox", "class": "firefox"}]
+        content_boxes = detect_window_content_areas(gray, client_box)
+
+        self.assertGreaterEqual(len(content_boxes), 1, "Expected browser content viewport to be detected")
+        cb = content_boxes[0]
+        self.assertEqual(cb["x"], 0)
+        self.assertEqual(cb["w"], 800)
+        # Sep Y should be at or near 80
+        self.assertTrue(78 <= cb["y"] <= 82, f"Expected sep_y near 80, got {cb['y']}")
+        self.assertTrue(518 <= cb["h"] <= 522, f"Expected body height near 520, got {cb['h']}")
+
+    def test_browser_split_page_body_e2e(self):
+        # Full mockup of browser: top 80px toolbar, then left half (white) and right half (light gray)
+        img = np.full((700, 1000, 3), 40, dtype=np.uint8) # dark browser chrome
+        # Left column of page
+        cv2.rectangle(img, (20, 80), (500, 680), (255, 255, 255), -1)
+        cv2.rectangle(img, (20, 80), (500, 680), (180, 180, 180), 1)
+        # Right column of page
+        cv2.rectangle(img, (500, 80), (980, 680), (245, 245, 245), -1)
+        cv2.rectangle(img, (500, 80), (980, 680), (180, 180, 180), 1)
+
+        path = self._save_img("browser_columns.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "clients.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([{"at": [0, 0], "size": [1000, 700], "title": "Web Browser", "class": "zen-browser"}], f)
+
+        res = detect_ui_elements(path, clients_path=clients_json)
+        # Check that a box spanning the combined body (~960px wide, ~600px high at y=80) exists
+        full_body_candidates = [
+            b for b in res["boxes"]
+            if b["w"] >= 850 and b["h"] >= 500 and b["y"] <= 100
+        ]
+        self.assertGreaterEqual(len(full_body_candidates), 1, "Expected full web page body candidate to be detected")
+
+    def test_workspace_and_monitor_filtering(self):
+        img = np.full((600, 800, 3), 30, dtype=np.uint8)
+        path = self._save_img("ws_test.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "clients_ws.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([
+                # Inactive workspace 1 (two tiled terminals)
+                {"at": [0, 0], "size": [400, 600], "workspace": {"id": 1}, "title": "kitty1", "class": "kitty"},
+                {"at": [400, 0], "size": [400, 600], "workspace": {"id": 1}, "title": "kitty2", "class": "kitty"},
+                # Active workspace 2 (full browser)
+                {"at": [0, 0], "size": [800, 600], "workspace": {"id": 2}, "title": "LibreWolf", "class": "librewolf"},
+                # Inactive workspace 3 but PINNED (should be visible)
+                {"at": [50, 50], "size": [200, 200], "workspace": {"id": 3}, "pinned": True, "title": "Picture-in-Picture"},
+                # Window on another monitor (at 1920, 0)
+                {"at": [1920, 0], "size": [800, 600], "workspace": {"id": 2}, "title": "OtherMon"}
+            ], f)
+
+        # Run with SMARTSHOT_WORKSPACE_ID=2, SMARTSHOT_MONITOR_X=0, SMARTSHOT_MONITOR_Y=0
+        old_env = os.environ.copy()
+        try:
+            os.environ["SMARTSHOT_WORKSPACE_ID"] = "2"
+            os.environ["SMARTSHOT_MONITOR_X"] = "0"
+            os.environ["SMARTSHOT_MONITOR_Y"] = "0"
+
+            res = detect_ui_elements(path, clients_path=clients_json)
+            client_boxes = [b for b in res["boxes"] if b.get("is_client")]
+
+            titles = [b.get("title") for b in client_boxes]
+            self.assertIn("LibreWolf", titles, "Active workspace window should be included")
+            self.assertIn("Picture-in-Picture", titles, "Pinned window should be included regardless of workspace")
+            self.assertNotIn("kitty1", titles, "Inactive workspace window must NOT be included")
+            self.assertNotIn("kitty2", titles, "Inactive workspace window must NOT be included")
+            self.assertNotIn("OtherMon", titles, "Off-monitor window must NOT be included")
+        finally:
+            os.environ.clear()
+            os.environ.update(old_env)
 
 if __name__ == "__main__":
     unittest.main()
