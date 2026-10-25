@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [ main, "feature/**", "fix/**" ]
+    branches: [ main, "feature/**", "feat/**", "fix/**" ]
   pull_request:
     branches: [ main ]
 
@@ -62,8 +62,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Check bash script syntax
+      - name: Check bash script syntax and desktop file
         run: |
           bash -n bin/hyprsmartshot
           bash -n install.sh
-          echo "[OK] Bash scripts syntax validated"
+          bash -n packaging/arch/PKGBUILD
+          bash -n packaging/arch/PKGBUILD-git
+          if command -v desktop-file-validate >/dev/null 2>&1; then
+            desktop-file-validate packaging/arch/hyprsmartshot.desktop
+          fi
+          echo "[OK] Shell scripts, PKGBUILDs, and desktop entries validated"

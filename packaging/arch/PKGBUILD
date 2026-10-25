@@ -1,0 +1,65 @@
+# Maintainer: Richieee <https://github.com/Richieee-0006>
+pkgname=hyprsmartshot
+pkgver=0.0.1
+pkgrel=1
+pkgdesc="Ultra-smart screenshot and annotation utility crafted for Hyprland on Wayland"
+arch=('any')
+url="https://github.com/Richieee-0006/hyprsmartshot"
+license=('MIT')
+depends=(
+    'bash'
+    'grim'
+    'imagemagick'
+    'jq'
+    'libnotify'
+    'python'
+    'python-numpy'
+    'python-opencv'
+    'python-pyside6'
+    'quickshell'
+    'satty'
+    'wl-clipboard'
+)
+optdepends=(
+    'libcanberra: Camera shutter sound effect'
+    'libpulse: Alternative sound player (paplay)'
+    'swappy: Alternative annotation tool fallback'
+    'tesseract: OCR text recognition support'
+    'tesseract-data-eng: English OCR language data'
+    'tesseract-data-ces: Czech OCR language data'
+    'swayimg: Lightweight Wayland fallback image viewer'
+    'imv: X11/Wayland fallback image viewer'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+        "hyprsmartshot.desktop")
+sha256sums=('06a646e2f1e090742e4a18a2003bff97ea484ebd4d5ae1251f58cabaec29ad8f'
+            '7947f3de6f3d75c8518a14ba4cd6840565432a5b41609b366bad6e0cee63290f')
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+
+    # Install core package files into /usr/share/hyprsmartshot
+    install -dm755 "$pkgdir/usr/share/$pkgname"
+    cp -r shell.qml components localization shaders config "$pkgdir/usr/share/$pkgname/"
+
+    # Install executable scripts
+    install -dm755 "$pkgdir/usr/share/$pkgname/bin"
+    install -m755 bin/hyprsmartshot "$pkgdir/usr/share/$pkgname/bin/hyprsmartshot"
+
+    install -dm755 "$pkgdir/usr/share/$pkgname/vision"
+    install -m755 vision/detect_ui.py "$pkgdir/usr/share/$pkgname/vision/detect_ui.py"
+
+    install -dm755 "$pkgdir/usr/share/$pkgname/scripts"
+    install -m755 scripts/pin_window.py "$pkgdir/usr/share/$pkgname/scripts/pin_window.py"
+    install -m755 scripts/localization_template.py "$pkgdir/usr/share/$pkgname/scripts/localization_template.py"
+
+    # Install launcher symlink into /usr/bin
+    install -dm755 "$pkgdir/usr/bin"
+    ln -sf "/usr/share/$pkgname/bin/hyprsmartshot" "$pkgdir/usr/bin/hyprsmartshot"
+
+    # Install desktop entry
+    install -Dm644 "$srcdir/hyprsmartshot.desktop" "$pkgdir/usr/share/applications/hyprsmartshot.desktop"
+
+    # Install license
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

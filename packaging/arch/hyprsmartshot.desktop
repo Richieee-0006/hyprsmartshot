@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=HyprSmartShot
+GenericName=Screenshot Utility
+Comment=Ultra-smart screenshot and annotation utility crafted for Hyprland on Wayland
+Exec=hyprsmartshot universal
+Icon=accessories-screenshot
+Terminal=false
+Categories=Utility;
+Keywords=screenshot;snapshot;capture;wayland;hyprland;ocr;
+StartupNotify=false

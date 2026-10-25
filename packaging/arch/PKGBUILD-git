@@ -1,0 +1,73 @@
+# Maintainer: Richieee <https://github.com/Richieee-0006>
+pkgname=hyprsmartshot-git
+pkgver=0.0.1.r4.g6c6302a
+pkgrel=1
+pkgdesc="Ultra-smart screenshot and annotation utility crafted for Hyprland on Wayland (git development version)"
+arch=('any')
+url="https://github.com/Richieee-0006/hyprsmartshot"
+license=('MIT')
+depends=(
+    'bash'
+    'grim'
+    'imagemagick'
+    'jq'
+    'libnotify'
+    'python'
+    'python-numpy'
+    'python-opencv'
+    'python-pyside6'
+    'quickshell'
+    'satty'
+    'wl-clipboard'
+)
+optdepends=(
+    'libcanberra: Camera shutter sound effect'
+    'libpulse: Alternative sound player (paplay)'
+    'swappy: Alternative annotation tool fallback'
+    'tesseract: OCR text recognition support'
+    'tesseract-data-eng: English OCR language data'
+    'tesseract-data-ces: Czech OCR language data'
+    'swayimg: Lightweight Wayland fallback image viewer'
+    'imv: X11/Wayland fallback image viewer'
+)
+makedepends=('git')
+provides=('hyprsmartshot')
+conflicts=('hyprsmartshot')
+source=("$pkgname::git+$url.git#branch=main"
+        "hyprsmartshot.desktop")
+sha256sums=('SKIP'
+            '7947f3de6f3d75c8518a14ba4cd6840565432a5b41609b366bad6e0cee63290f')
+
+pkgver() {
+    cd "$srcdir/$pkgname"
+    git describe --long --tags --abbrev=7 2>/dev/null | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g' || printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+package() {
+    cd "$srcdir/$pkgname"
+
+    # Install core package files into /usr/share/hyprsmartshot
+    install -dm755 "$pkgdir/usr/share/hyprsmartshot"
+    cp -r shell.qml components localization shaders config "$pkgdir/usr/share/hyprsmartshot/"
+
+    # Install executable scripts
+    install -dm755 "$pkgdir/usr/share/hyprsmartshot/bin"
+    install -m755 bin/hyprsmartshot "$pkgdir/usr/share/hyprsmartshot/bin/hyprsmartshot"
+
+    install -dm755 "$pkgdir/usr/share/hyprsmartshot/vision"
+    install -m755 vision/detect_ui.py "$pkgdir/usr/share/hyprsmartshot/vision/detect_ui.py"
+
+    install -dm755 "$pkgdir/usr/share/hyprsmartshot/scripts"
+    install -m755 scripts/pin_window.py "$pkgdir/usr/share/hyprsmartshot/scripts/pin_window.py"
+    install -m755 scripts/localization_template.py "$pkgdir/usr/share/hyprsmartshot/scripts/localization_template.py"
+
+    # Install launcher symlink into /usr/bin
+    install -dm755 "$pkgdir/usr/bin"
+    ln -sf "/usr/share/hyprsmartshot/bin/hyprsmartshot" "$pkgdir/usr/bin/hyprsmartshot"
+
+    # Install desktop entry
+    install -Dm644 "$srcdir/hyprsmartshot.desktop" "$pkgdir/usr/share/applications/hyprsmartshot.desktop"
+
+    # Install license
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

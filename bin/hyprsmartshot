@@ -11,6 +11,9 @@ while [ -L "$SCRIPT_SOURCE" ]; do
     [[ "$SCRIPT_SOURCE" != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
 done
 DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")/.." && pwd)"
+if [ ! -f "$DIR/shell.qml" ] && [ -d "/usr/share/hyprsmartshot" ]; then
+    DIR="/usr/share/hyprsmartshot"
+fi
 VERSION="0.0.1"
 
 show_help() {
