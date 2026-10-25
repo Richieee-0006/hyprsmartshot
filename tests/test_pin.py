@@ -255,6 +255,7 @@ class TestPinWindowUnit(unittest.TestCase):
             dbl_click = QMouseEvent(
                 QMouseEvent.Type.MouseButtonDblClick,
                 QPointF(50, 50),
+                QPointF(50, 50),
                 Qt.MouseButton.LeftButton,
                 Qt.MouseButton.LeftButton,
                 Qt.KeyboardModifier.NoModifier
@@ -299,6 +300,7 @@ class TestPinWindowUnit(unittest.TestCase):
             m_right = QMouseEvent(
                 QMouseEvent.Type.MouseButtonPress,
                 QPointF(10, 10),
+                QPointF(10, 10),
                 Qt.MouseButton.RightButton,
                 Qt.MouseButton.RightButton,
                 Qt.KeyboardModifier.NoModifier
@@ -312,6 +314,7 @@ class TestPinWindowUnit(unittest.TestCase):
             win_m.show()
             m_mid = QMouseEvent(
                 QMouseEvent.Type.MouseButtonPress,
+                QPointF(10, 10),
                 QPointF(10, 10),
                 Qt.MouseButton.MiddleButton,
                 Qt.MouseButton.MiddleButton,
