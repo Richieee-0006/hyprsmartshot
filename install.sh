@@ -28,6 +28,13 @@ chmod +x "$DIR/vision/detect_ui.py"
 mkdir -p "$BIN_DIR"
 ln -sf "$DIR/bin/hyprsmartshot" "$BIN_DIR/hyprsmartshot"
 
+# 4. Satty configuration template
+mkdir -p "$HOME/.config/satty"
+if [ ! -f "$HOME/.config/satty/config.toml" ]; then
+    echo "==> Installing default aesthetic Satty config..."
+    cp "$DIR/config/satty/config.toml" "$HOME/.config/satty/config.toml"
+fi
+
 echo ""
 echo "✨ HyprSmartShot installed successfully!"
 echo "   Binary linked to: $BIN_DIR/hyprsmartshot"

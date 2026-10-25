@@ -74,3 +74,17 @@ bind = , Print, exec, hyprsmartshot universal
 bind = SHIFT, Print, exec, hyprsmartshot full
 bind = CTRL, Print, exec, hyprsmartshot window
 ```
+
+### Anotační nástroj (Satty)
+
+Pro estetické zobrazení anotačního editoru Satty v plovoucím okně doporučujeme přidat do pravidel oken Hyprlandu (`~/.config/hypr/hyprland.conf` nebo Lua modulů):
+
+```ini
+windowrulev2 = float, class:^(com\.gabm\.satty|satty)$
+windowrulev2 = center, class:^(com\.gabm\.satty|satty)$
+windowrulev2 = pin, class:^(com\.gabm\.satty|satty)$
+windowrulev2 = dimaround, class:^(com\.gabm\.satty|satty)$
+```
+
+Kompletní Catppuccin konfigurace pro Satty v0.22+ je součástí repozitáře v `config/satty/config.toml` a automaticky se instaluje do `~/.config/satty/config.toml`.
+

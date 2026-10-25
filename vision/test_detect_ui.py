@@ -248,5 +248,54 @@ class TestUIDetector(unittest.TestCase):
         self.assertEqual(floating_wins[0]["w"], 400)
         self.assertEqual(floating_wins[0]["h"], 300)
 
+    def test_small_inventory_slots_and_shapes(self):
+        # Small 14x14 item slots and 24x12 button
+        img = np.full((300, 400, 3), 30, dtype=np.uint8)
+        # Small slot 14x14
+        cv2.rectangle(img, (50, 50), (64, 64), (50, 50, 50), -1)
+        cv2.rectangle(img, (50, 50), (64, 64), (180, 180, 180), 1)
+
+        # Small slot 16x16
+        cv2.rectangle(img, (100, 50), (116, 66), (50, 50, 50), -1)
+        cv2.rectangle(img, (100, 50), (116, 66), (180, 180, 180), 1)
+
+        # Small button 28x14
+        cv2.rectangle(img, (150, 50), (178, 64), (60, 60, 60), -1)
+        cv2.rectangle(img, (150, 50), (178, 64), (200, 200, 200), 1)
+
+        path = self._save_img("small_shapes.png", img)
+        res = detect_ui_elements(path)
+
+        # Check that 14x14 slot is detected
+        slot14 = [b for b in res["boxes"] if abs(b["x"] - 50) <= 2 and abs(b["y"] - 50) <= 2]
+        self.assertGreaterEqual(len(slot14), 1, "Small 14x14 slot should be detected")
+        self.assertTrue(12 <= slot14[0]["w"] <= 16 and 12 <= slot14[0]["h"] <= 16)
+
+        # Check that 16x16 slot is detected
+        slot16 = [b for b in res["boxes"] if abs(b["x"] - 100) <= 2 and abs(b["y"] - 50) <= 2]
+        self.assertGreaterEqual(len(slot16), 1, "Small 16x16 slot should be detected")
+
+        # Check button
+        btn = [b for b in res["boxes"] if abs(b["x"] - 150) <= 2 and abs(b["y"] - 50) <= 2]
+        self.assertGreaterEqual(len(btn), 1, "Small button should be detected")
+
+    def test_small_slots_grid_cluster(self):
+        # 3 small 16x16 slots with 4px gap in a row
+        img = np.full((200, 300, 3), 25, dtype=np.uint8)
+        for i in range(3):
+            sx = 40 + i * 20
+            sy = 40
+            cv2.rectangle(img, (sx, sy), (sx + 16, sy + 16), (50, 50, 50), -1)
+            cv2.rectangle(img, (sx, sy), (sx + 16, sy + 16), (190, 190, 190), 1)
+
+        path = self._save_img("small_grid.png", img)
+        res = detect_ui_elements(path)
+
+        slots = [b for b in res["boxes"] if b["type"] == "slot" and abs(b["y"] - 40) <= 3]
+        self.assertEqual(len(slots), 3, f"Expected 3 distinct small slots, got {len(slots)}")
+
+        rows = [b for b in res["boxes"] if b["type"] == "grid_row"]
+        self.assertGreaterEqual(len(rows), 1, "Expected clustered grid_row for small slots")
+
 if __name__ == "__main__":
     unittest.main()

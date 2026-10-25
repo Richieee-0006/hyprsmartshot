@@ -1,0 +1,127 @@
+# Satty Screenshot Annotation Tool Configuration
+# Documented for Satty v0.22.0
+
+[general]
+# Start Satty in windowed floating mode (not covering the whole display)
+fullscreen = false
+
+# Intelligent window resizing to fit annotation target nicely
+resize = { mode = "smart" }
+
+# Request compositor floating state
+floating-hack = true
+
+# Copy automatically on every change (disabled to keep clipboard clean)
+auto-copy = false
+
+# Exit immediately once screenshot is saved or copied
+early-exit = ["all"]
+
+# Rounded corners for drawn rectangle annotations (pixels)
+corner-roundness = 12
+
+# Default annotation tool on launch (options: pointer, crop, line, arrow, rectangle, ellipse, text, marker, blur, highlight, brush)
+initial-tool = "brush"
+
+# Command executed when copying image to clipboard
+copy-command = "wl-copy --type image/png"
+
+# Annotation size scale factor (stroke thickness, font sizing)
+annotation-size-factor = 1.0
+
+# Default destination template for saved captures
+output-filename = "~/Pictures/Screenshots/satty-%Y-%m-%d_%H-%M-%S.png"
+
+# Save screenshot to disk whenever copy occurs
+save-after-copy = false
+
+# Toolbar visibility preferences
+default-hide-toolbars = false
+focus-toggles-toolbars = false
+
+# Fill rectangles and ellipses with solid color by default
+default-fill-shapes = false
+
+# Round stroke ends for arrows and lines
+default-round-caps = true
+
+# Primary highlighter style (block or freehand; hold Ctrl to toggle during draw)
+primary-highlighter = "block"
+
+# Enable system desktop notifications
+disable-notifications = false
+
+# Action triggered when pressing Enter: save to clipboard and exit
+actions-on-enter = ["save-to-clipboard"]
+
+# Action triggered when pressing Escape: exit
+actions-on-escape = ["exit"]
+
+# Action triggered on right click
+actions-on-right-click = []
+
+# Keep window decorations clean and modern
+no-window-decoration = false
+
+# Brush smoothing algorithm history buffer (0 disables smoothing, 8 gives smooth strokes)
+brush-smooth-history-size = 8
+
+# Navigation & Canvas zoom behavior
+zoom-factor = 1.1
+pan-step-size = 50.0
+text-move-length = 50.0
+input-scale = 1.0
+
+# Window metadata
+title = "Satty Annotation"
+app-id = "com.gabm.satty"
+notification-thumbnail = "screenshot"
+
+[font]
+family = "JetBrainsMono Nerd Font"
+style = "Regular"
+fallback = [
+    "Noto Sans CJK SC",
+    "Noto Sans CJK TC",
+    "Noto Sans CJK JP",
+    "Noto Sans CJK KR",
+]
+
+[color-palette]
+# Modern palette (Catppuccin Mocha inspired)
+# Format is RRGGBBAA hex (FF = fully opaque)
+palette = [
+    "#f38ba8ff",
+    "#fab387ff",
+    "#f9e2afff",
+    "#a6e3a1ff",
+    "#89b4faff",
+    "#cba6f7ff",
+    "#cdd6f4ff",
+    "#1e1e2eff",
+]
+
+# Quick presets for the GTK color picker dialog
+custom = [
+    "#f38ba8",
+    "#fab387",
+    "#f9e2af",
+    "#a6e3a1",
+    "#89b4fa",
+    "#cba6f7",
+    "#cdd6f4",
+    "#11111b",
+]
+
+[keybinds]
+pointer = "p"
+crop = "c"
+brush = "b"
+line = "i"
+arrow = "z"
+rectangle = "r"
+ellipse = "e"
+text = "t"
+marker = "m"
+blur = "u"
+highlight = "g"

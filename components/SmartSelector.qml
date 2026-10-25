@@ -296,7 +296,7 @@ Item {
         Item {
             id: handlesContainer
             anchors.fill: parent
-            visible: root.isConfirmed && parent.width >= 30 && parent.height >= 30
+            visible: root.isConfirmed && parent.width >= 20 && parent.height >= 20
             z: 10
 
             // Helper component for handle rendering
@@ -621,7 +621,11 @@ Item {
             let dup = false;
             for (let j = 0; j < unique.length; j++) {
                 const u = unique[j];
-                if (Math.abs(c.x - u.x) < 8 && Math.abs(c.y - u.y) < 8 && Math.abs(c.w - u.w) < 12 && Math.abs(c.h - u.h) < 12) {
+                const isSmall = (c.w < 32 || c.h < 32 || u.w < 32 || u.h < 32);
+                const posTol = isSmall ? 4 : 8;
+                const sizeTol = isSmall ? 5 : 12;
+                if (Math.abs(c.x - u.x) < posTol && Math.abs(c.y - u.y) < posTol &&
+                    Math.abs(c.w - u.w) < sizeTol && Math.abs(c.h - u.h) < sizeTol) {
                     dup = true;
                     break;
                 }
@@ -828,14 +832,14 @@ Item {
 
             if (root.isDragging) {
                 root.isDragging = false;
-                if (root.selectionWidth > 15 && root.selectionHeight > 15) {
+                if (root.selectionWidth > 8 && root.selectionHeight > 8) {
                     root.pillSpawnX = mouse.x;
                     root.pillSpawnY = mouse.y;
                     root.isConfirmed = true;
                 } else {
                     root.clearConfirmation();
                 }
-            } else if (!root.isConfirmed && root.selectionWidth > 15 && root.selectionHeight > 15) {
+            } else if (!root.isConfirmed && root.selectionWidth > 8 && root.selectionHeight > 8) {
                 // Click locked on candidate box (Confirmation mode)
                 root.pillSpawnX = mouse.x;
                 root.pillSpawnY = mouse.y;
@@ -846,7 +850,7 @@ Item {
         }
 
         onDoubleClicked: (mouse) => {
-            if (mouse.button === Qt.LeftButton && root.selectionWidth > 10 && root.selectionHeight > 10) {
+            if (mouse.button === Qt.LeftButton && root.selectionWidth > 8 && root.selectionHeight > 8) {
                 root.copyAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight);
             }
         }

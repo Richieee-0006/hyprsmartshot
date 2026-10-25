@@ -50,6 +50,7 @@ def deduplicate_boxes(boxes, iou_thresh=0.72, contain_thresh=0.88):
     """
     Eliminates concentric inner/outer border artifacts created by multi-pixel frames,
     merging them into the unified outer bounding box and preserving specific types.
+    Adapts size tolerance dynamically to ensure small elements are not falsely merged.
     """
     sorted_boxes = sorted(boxes, key=lambda b: b['area'], reverse=True)
     deduped = []
@@ -60,9 +61,11 @@ def deduplicate_boxes(boxes, iou_thresh=0.72, contain_thresh=0.88):
             iou = compute_iou(b, existing)
             contain = compute_containment(b, existing)
             size_diff = abs(b['w'] - existing['w']) + abs(b['h'] - existing['h'])
+            min_dim = min(b['w'], b['h'], existing['w'], existing['h'])
+            max_size_diff = min(28, max(5, int(min_dim * 0.42)))
 
             # If two boxes have high IoU or one almost entirely contains the other with minor size difference
-            if iou >= iou_thresh or (contain >= contain_thresh and size_diff <= 28):
+            if iou >= iou_thresh or (contain >= contain_thresh and size_diff <= max_size_diff):
                 merged = True
                 # Merge coordinates to outer extent
                 nx = min(existing['x'], b['x'])
@@ -98,26 +101,29 @@ def deduplicate_boxes(boxes, iou_thresh=0.72, contain_thresh=0.88):
 def compute_border_contrast(gray, x, y, w, h):
     """
     Measures edge contrast across the outer perimeter of a candidate bounding box.
-    Samples outer vs inner 3-pixel strips on all 4 borders.
+    Uses adaptive probe depth (1px for small shapes <24px, 2px for <44px, 3px for large)
+    to prevent sampling interference from adjacent items or grid slots.
     """
     h_img, w_img = gray.shape
     if x <= 1 or y <= 1 or x + w >= w_img - 2 or y + h >= h_img - 2:
         return 30.0  # Outer boundaries / screen panels are given full confidence
 
-    top_out = gray[max(0, y-3):y, x:x+w]
-    top_in = gray[y:min(h_img, y+3), x:x+w]
+    d = 1 if (w < 24 or h < 24) else (2 if (w < 44 or h < 44) else 3)
+
+    top_out = gray[max(0, y-d):y, x:x+w]
+    top_in = gray[y:min(h_img, y+d), x:x+w]
     diff_t = abs(float(top_out.mean()) - float(top_in.mean())) if top_out.size and top_in.size else 0.0
 
-    bot_in = gray[max(0, y+h-3):y+h, x:x+w]
-    bot_out = gray[y+h:min(h_img, y+h+3), x:x+w]
+    bot_in = gray[max(0, y+h-d):y+h, x:x+w]
+    bot_out = gray[y+h:min(h_img, y+h+d), x:x+w]
     diff_b = abs(float(bot_in.mean()) - float(bot_out.mean())) if bot_in.size and bot_out.size else 0.0
 
-    left_out = gray[y:y+h, max(0, x-3):x]
-    left_in = gray[y:y+h, x:min(w_img, x+3)]
+    left_out = gray[y:y+h, max(0, x-d):x]
+    left_in = gray[y:y+h, x:min(w_img, x+d)]
     diff_l = abs(float(left_out.mean()) - float(left_in.mean())) if left_out.size and left_in.size else 0.0
 
-    right_in = gray[y:y+h, max(0, x+w-3):x+w]
-    right_out = gray[y:y+h, x+w:min(w_img, x+w+3)]
+    right_in = gray[y:y+h, max(0, x+w-d):x+w]
+    right_out = gray[y:y+h, x+w:min(w_img, x+w+d)]
     diff_r = abs(float(right_in.mean()) - float(right_out.mean())) if right_in.size and right_out.size else 0.0
 
     return float((diff_t + diff_b + diff_l + diff_r) / 4.0)
@@ -126,8 +132,8 @@ def is_valid_border(gray, x, y, w, h):
     """
     Checks if a candidate bounding box has a genuine UI border.
     In dark scenes (mean < 55, typical dark fantasy UI / RPG frames),
-    a contrast of 2.6 is clearly visible and accepted.
-    In brighter scenes, a contrast of 6.0 is required.
+    a contrast of 2.2 is clearly visible and accepted.
+    In brighter scenes, a contrast of 5.5 is required.
     """
     h_img, w_img = gray.shape
     if x <= 1 or y <= 1 or x + w >= w_img - 2 or y + h >= h_img - 2:
@@ -141,11 +147,15 @@ def is_valid_border(gray, x, y, w, h):
 
     # Adaptive contrast threshold based on human contrast sensitivity (Weber-Fechner law)
     if local_mean < 45.0:
-        req_contrast = 2.4
+        req_contrast = 2.2
     elif local_mean < 80.0:
-        req_contrast = 4.0
+        req_contrast = 3.6
     else:
-        req_contrast = 6.2
+        req_contrast = 5.5
+
+    # Small shapes (<28px) have concentrated borders; allow slight tolerance
+    if w < 28 or h < 28:
+        req_contrast = max(2.0, req_contrast * 0.85)
 
     return (contrast >= req_contrast), contrast
 
@@ -154,10 +164,11 @@ def cluster_slots_and_grids(boxes):
     Detects inventory slot patterns (e.g. Minecraft, WoW, Diablo, Terraria)
     and synthesizes aggregate bounding boxes for rows and entire inventory grids.
     Partitions adjacent slots into contiguous chains to support split hotbars/windows.
+    Supports small slots down to 10px.
     """
     # Candidate slots: square-like UI elements
     slots = [b for b in boxes if b.get('type') == 'slot' or
-             (16 <= b['w'] <= 160 and 16 <= b['h'] <= 160 and 0.70 <= (b['w'] / b['h']) <= 1.42 and b.get('type') != 'item')]
+             (10 <= b['w'] <= 180 and 10 <= b['h'] <= 180 and 0.65 <= (b['w'] / b['h']) <= 1.54 and b.get('type') != 'item')]
     if len(slots) < 2:
         return []
 
@@ -177,7 +188,7 @@ def cluster_slots_and_grids(boxes):
         for j, s2 in enumerate(slots_sorted):
             if j == i or j in used_slot_indices:
                 continue
-            if abs(s1['y'] - s2['y']) <= max(6, s1['h'] * 0.20) and abs(s1['h'] - s2['h']) <= max(6, s1['h'] * 0.20):
+            if abs(s1['y'] - s2['y']) <= max(4, s1['h'] * 0.25) and abs(s1['h'] - s2['h']) <= max(4, s1['h'] * 0.25):
                 band.append(s2)
                 band_indices.append(j)
 
@@ -192,7 +203,7 @@ def cluster_slots_and_grids(boxes):
             gap = curr['x'] - (prev['x'] + prev['w'])
             avg_w = (prev['w'] + curr['w']) / 2.0
 
-            if -4 <= gap <= max(16, avg_w * 0.60):
+            if -4 <= gap <= max(14, avg_w * 0.65):
                 current_chain.append(curr)
                 current_chain_indices.append(curr_idx)
             else:
@@ -272,7 +283,7 @@ def is_duplicate(a, b, tol=5):
             abs(a['w'] - b['w']) <= tol * 1.5 and
             abs(a['h'] - b['h']) <= tol * 1.5)
 
-def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_ratio=0.98):
+def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_ratio=0.98):
     start_time = time.time()
 
     img = cv2.imread(image_path)
@@ -292,11 +303,17 @@ def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_rat
     # 2. Bilateral filter: smooths textured 3D backgrounds while keeping pixel-sharp UI borders
     filtered = cv2.bilateralFilter(cl, 5, 25, 25)
 
-    # 3. Multi-threshold Canny edge detection
+    # 3. Multi-threshold Canny edge detection & Multi-scale closing
     edges_sharp = cv2.Canny(filtered, 28, 85)
     edges_dark = cv2.Canny(filtered, 12, 45)
-    k_close = cv2.getStructuringElement(cv2.MORPH_RECT, (4, 4))
-    closed_edges = cv2.morphologyEx(cv2.bitwise_or(edges_sharp, edges_dark), cv2.MORPH_CLOSE, k_close)
+    edges_raw = cv2.bitwise_or(edges_sharp, edges_dark)
+
+    # Fine kernel preserves small 10-24px buttons/slots without bridging adjacent gaps
+    k_fine = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+    closed_fine = cv2.morphologyEx(edges_raw, cv2.MORPH_CLOSE, k_fine)
+    k_close = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    closed_standard = cv2.morphologyEx(edges_raw, cv2.MORPH_CLOSE, k_close)
+    closed_edges = cv2.bitwise_or(closed_fine, closed_standard)
 
     # 4. Large-scale morphological closing for dark/translucent panels (dialogue, chat, HUD)
     # Apply closing on both raw gray and CLAHE filtered to detect both translucent HUDs and dark frames
@@ -355,7 +372,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_rat
 
     for cnt in contours:
         x, y, w, h = cv2.boundingRect(cnt)
-        if w < 16 or h < 16:
+        if w < 10 or h < 10:
             continue
 
         box_area = w * h
@@ -363,18 +380,19 @@ def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_rat
             continue
 
         # Filter out extreme text slivers (single line of text inside dialogues)
-        if (w / h > 10 or h / w > 10) and (h < 26 or w < 26):
+        if (w / h > 12 or h / w > 12) and (h < 20 or w < 20):
             continue
 
         area = cv2.contourArea(cnt)
         extent = float(area) / box_area
-        if extent < 0.52:
+        min_extent = 0.45 if box_area < 450 else 0.50
+        if extent < min_extent:
             continue
 
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        # UI rectangles, rounded rectangles, and ornate frames have up to 14 vertices
-        if len(approx) > 14:
+        max_vertices = 18 if box_area < 500 else 14
+        if len(approx) > max_vertices:
             continue
 
         valid, contrast = is_valid_border(gray, x, y, w, h)
@@ -385,9 +403,9 @@ def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_rat
         elem_type = "detected"
         if w >= 220 and h >= 140:
             elem_type = "panel"
-        elif 16 <= w <= 160 and 16 <= h <= 160 and 0.70 <= (w / h) <= 1.42:
+        elif 10 <= w <= 180 and 10 <= h <= 180 and 0.65 <= (w / h) <= 1.54:
             elem_type = "slot"
-        elif 30 <= w <= 220 and 16 <= h <= 64:
+        elif 20 <= w <= 260 and 10 <= h <= 64:
             elem_type = "button"
 
         raw_boxes.append({
@@ -401,7 +419,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_rat
             "type": elem_type
         })
 
-    # Suppress periodic mesh / background texture tiling (e.g. 10+ identical tiles with low contrast)
+    # Suppress periodic mesh / background texture tiling (e.g. 14+ identical tiles with low contrast)
     size_bins = {}
     for b in raw_boxes:
         key = (b["w"] // 4, b["h"] // 4)
@@ -410,7 +428,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=240, max_area_rat
     filtered_boxes = []
     for b in raw_boxes:
         key = (b["w"] // 4, b["h"] // 4)
-        if size_bins[key] > 10 and b.get("contrast", 0) < 26.0:
+        if size_bins[key] > 14 and b.get("contrast", 0) < 22.0:
             continue
         filtered_boxes.append(b)
 
