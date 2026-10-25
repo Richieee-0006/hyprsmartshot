@@ -34,9 +34,9 @@ jobs:
         run: |
           python -m unittest discover -s vision
 
-      - name: Run Localization (i18n) unit tests
+      - name: Run CLI and Localization (i18n) unit tests
         run: |
-          python3 tests/test_i18n.py
+          python -m unittest discover -s tests
 
   validate-translations:
     name: Validate Translation JSONs

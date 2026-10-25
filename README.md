@@ -1,5 +1,6 @@
 # HyprSmartShot
 
+[![Release](https://img.shields.io/github/v/release/Richieee-0006/hyprsmartshot?style=flat-square&color=fab387)](https://github.com/Richieee-0006/hyprsmartshot/releases)
 [![Target](https://img.shields.io/badge/target-Hyprland_Wayland-89b4fa?style=flat-square&logo=wayland&logoColor=white)](https://hyprland.org)
 [![Toolkit](https://img.shields.io/badge/toolkit-QuickShell_Qt6-a6e3a1?style=flat-square)](https://quickshell.org)
 [![Vision](https://img.shields.io/badge/vision-OpenCV-f9e2af?style=flat-square&logo=opencv&logoColor=black)](https://opencv.org)
@@ -32,7 +33,8 @@ An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprl
 | Mode | Command | Description |
 | :--- | :--- | :--- |
 | **Smart / Universal (Default)** | `hyprsmartshot universal` | All-in-one detection combining Computer Vision UI analysis, Hyprland window boundaries, and freehand magnetic selection. |
-| **Full Screen** | `hyprsmartshot screen` | Instant capture of the entire focused monitor. |
+| **Full Screen** | `hyprsmartshot screen` | Interactive screenshot overlay covering the entire focused monitor. |
+| **Fast Fullscreen** | `hyprsmartshot full` | Instant non-interactive capture of the focused monitor directly to disk and clipboard. |
 
 ---
 

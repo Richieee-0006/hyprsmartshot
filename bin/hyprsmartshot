@@ -5,6 +5,58 @@
 set -e
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+VERSION="0.0.1"
+
+show_help() {
+    cat <<EOF
+HyprSmartShot v$VERSION
+Ultra-smart screenshot and annotation utility crafted for Hyprland on Wayland.
+
+Usage:
+  hyprsmartshot [COMMAND|OPTION]
+
+Commands:
+  universal       Smart UI detection and interactive overlay (default)
+  screen          Fullscreen interactive overlay
+  full            Instant fullscreen capture without opening overlay
+
+Options:
+  -h, --help      Display this help message
+  -v, --version   Display version information
+EOF
+}
+
+show_version() {
+    echo "hyprsmartshot v$VERSION"
+}
+
+MODE="${1:-universal}"
+
+# Fast exit for CLI information flags or invalid commands before acquiring resources
+case "$MODE" in
+    -h|--help|help)
+        show_help
+        exit 0
+        ;;
+    -v|--version|version)
+        show_version
+        exit 0
+        ;;
+    -*)
+        echo "Error: Unknown option '$MODE'" >&2
+        echo "Run 'hyprsmartshot --help' for usage." >&2
+        exit 1
+        ;;
+    universal|screen|full)
+        ;;
+    *)
+        echo "Error: Unknown command '$MODE'" >&2
+        echo "Valid commands: universal, screen, full" >&2
+        echo "Run 'hyprsmartshot --help' for usage." >&2
+        exit 1
+        ;;
+esac
+
 FREEZE_IMG="/tmp/hyprsmartshot_freeze.png"
 BOXES_JSON="/tmp/hyprsmartshot_boxes.json"
 CLIENTS_JSON="/tmp/hyprsmartshot_clients.json"
@@ -96,7 +148,6 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-MODE="${1:-universal}"
 
 # Query focused monitor details from Hyprland
 MONITOR_JSON=$(hyprctl monitors -j 2>/dev/null | jq -r '.[] | select(.focused == true)' 2>/dev/null || echo "")
