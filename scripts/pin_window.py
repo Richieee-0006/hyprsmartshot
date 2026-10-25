@@ -12,8 +12,11 @@ REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 BIN_PIN = os.path.join(REPO_DIR, "bin", "hyprsmartshot-pin")
 
 if os.path.isfile(BIN_PIN):
-    loader = SourceFileLoader("hyprsmartshot_pin", BIN_PIN)
-    mod = loader.load_module()
+    if "hyprsmartshot_pin" in sys.modules:
+        mod = sys.modules["hyprsmartshot_pin"]
+    else:
+        loader = SourceFileLoader("hyprsmartshot_pin", BIN_PIN)
+        mod = loader.load_module()
 
     # Expose symbols for backward compatibility
     PinWindow = getattr(mod, "PinWindow", None)

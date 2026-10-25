@@ -45,6 +45,7 @@ package() {
     # Install executable scripts
     install -dm755 "$pkgdir/usr/share/$pkgname/bin"
     install -m755 bin/hyprsmartshot "$pkgdir/usr/share/$pkgname/bin/hyprsmartshot"
+    install -m755 bin/hyprsmartshot-pin "$pkgdir/usr/share/$pkgname/bin/hyprsmartshot-pin"
 
     install -dm755 "$pkgdir/usr/share/$pkgname/vision"
     install -m755 vision/detect_ui.py "$pkgdir/usr/share/$pkgname/vision/detect_ui.py"
@@ -56,6 +57,7 @@ package() {
     # Install launcher symlink into /usr/bin
     install -dm755 "$pkgdir/usr/bin"
     ln -sf "/usr/share/$pkgname/bin/hyprsmartshot" "$pkgdir/usr/bin/hyprsmartshot"
+    ln -sf "/usr/share/$pkgname/bin/hyprsmartshot-pin" "$pkgdir/usr/bin/hyprsmartshot-pin"
 
     # Install desktop entry
     install -Dm644 "$srcdir/hyprsmartshot.desktop" "$pkgdir/usr/share/applications/hyprsmartshot.desktop"
