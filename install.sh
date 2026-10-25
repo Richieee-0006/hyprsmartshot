@@ -4,8 +4,16 @@
 
 set -e
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BIN_DIR="$HOME/.local/bin"
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+    SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+    SCRIPT_SOURCE="$(readlink "$SCRIPT_SOURCE")"
+    [[ "$SCRIPT_SOURCE" != /* ]] && SCRIPT_SOURCE="$SCRIPT_DIR/$SCRIPT_SOURCE"
+done
+DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+
+BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
+CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
 
 echo "==> Setting up HyprSmartShot in $DIR..."
 
@@ -33,14 +41,14 @@ mkdir -p "$BIN_DIR"
 ln -sf "$DIR/bin/hyprsmartshot" "$BIN_DIR/hyprsmartshot"
 
 # 4. Satty configuration template
-mkdir -p "$HOME/.config/satty"
-if [ ! -f "$HOME/.config/satty/config.toml" ]; then
+mkdir -p "$CONFIG_HOME/satty"
+if [ ! -f "$CONFIG_HOME/satty/config.toml" ]; then
     echo "==> Installing default aesthetic Satty config..."
-    cp "$DIR/config/satty/config.toml" "$HOME/.config/satty/config.toml"
+    cp "$DIR/config/satty/config.toml" "$CONFIG_HOME/satty/config.toml"
 fi
 
 # 5. HyprSmartShot configuration template
-CONFIG_DIR="$HOME/.config/hyprsmartshot"
+CONFIG_DIR="$CONFIG_HOME/hyprsmartshot"
 mkdir -p "$CONFIG_DIR/localization"
 if [ ! -f "$CONFIG_DIR/config.json" ] && [ ! -f "$CONFIG_DIR/config.toml" ]; then
     echo "==> Installing default HyprSmartShot config..."

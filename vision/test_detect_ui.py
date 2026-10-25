@@ -7,14 +7,22 @@ import os
 import sys
 import unittest
 import tempfile
-import cv2
-import numpy as np
-
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from vision.detect_ui import detect_ui_elements, compute_border_contrast, cluster_slots_and_grids
+try:
+    import cv2
+    import numpy as np
+    from vision.detect_ui import detect_ui_elements, compute_border_contrast, cluster_slots_and_grids
+    HAS_CV2 = True
+except ImportError:
+    HAS_CV2 = False
 
 class TestUIDetector(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        if not HAS_CV2:
+            raise unittest.SkipTest("OpenCV (cv2) or NumPy not installed in current Python environment")
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
 
