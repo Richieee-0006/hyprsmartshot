@@ -442,6 +442,13 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
             mon_y_str = os.environ.get("SMARTSHOT_MONITOR_Y", "").strip()
             mon_x = int(float(mon_x_str)) if mon_x_str else 0
             mon_y = int(float(mon_y_str)) if mon_y_str else 0
+            mon_scale_str = os.environ.get("SMARTSHOT_MONITOR_SCALE", "").strip()
+            try:
+                mon_scale = float(mon_scale_str) if mon_scale_str else 1.0
+                if mon_scale <= 0:
+                    mon_scale = 1.0
+            except ValueError:
+                mon_scale = 1.0
 
             with open(clients_path, "r") as cf:
                 clients_data = json.load(cf)
@@ -463,16 +470,21 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                             cx, cy = int(at[0]) - mon_x, int(at[1]) - mon_y
                             cw, ch = int(size[0]), int(size[1])
                             if cw >= 20 and ch >= 20:
+                                phys_x = int(round(cx * mon_scale))
+                                phys_y = int(round(cy * mon_scale))
+                                phys_w = int(round(cw * mon_scale))
+                                phys_h = int(round(ch * mon_scale))
+
                                 # Skip windows outside current monitor viewport
-                                if cx + cw <= 0 or cx >= orig_w or cy + ch <= 0 or cy >= orig_h:
+                                if phys_x + phys_w <= 0 or phys_x >= orig_w or phys_y + phys_h <= 0 or phys_y >= orig_h:
                                     continue
                                 is_fl = bool(c.get("floating", False))
                                 win_obj = {
-                                    "x": int(cx),
-                                    "y": int(cy),
-                                    "w": int(cw),
-                                    "h": int(ch),
-                                    "area": int(cw * ch),
+                                    "x": int(phys_x),
+                                    "y": int(phys_y),
+                                    "w": int(phys_w),
+                                    "h": int(phys_h),
+                                    "area": int(phys_w * phys_h),
                                     "extent": 1.0,
                                     "contrast": 60.0,
                                     "type": "floating_window" if is_fl else "window",

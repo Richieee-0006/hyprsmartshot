@@ -14,7 +14,8 @@ Scope {
     property bool magnifierActive: false
 
     function shellEscape(s) {
-        return "'" + s.replace(/'/g, "'\\''") + "'";
+        if (s === undefined || s === null) return "''";
+        return "'" + String(s).replace(/'/g, "'\\''") + "'";
     }
 
     function grimGeometry(x, y, width, height) {
@@ -35,13 +36,21 @@ Scope {
         const s = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_SCALE") || "1.0");
         const scale = (s > 0) ? s : 1.0;
 
-        const geom = `${Math.round(x + ox)},${Math.round(y + oy)} ${Math.round(width)}x${Math.round(height)}`;
-        const cx = Math.round(x * scale);
-        const cy = Math.round(y * scale);
-        const cw = Math.max(1, Math.round(width * scale));
-        const ch = Math.max(1, Math.round(height * scale));
+        const maxW = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_W") || "1920");
+        const maxH = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_H") || "1080");
 
-        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then if command -v magick >/dev/null 2>&1; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx}+${cy} +repage ${shellEscape(destFile)}; else convert /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx}+${cy} +repage ${shellEscape(destFile)}; fi; else grim -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
+        // Subpixel endpoint-difference transform to eliminate 1px rounding drift
+        const cx1 = Math.max(0, Math.min(maxW, Math.round(x * scale)));
+        const cy1 = Math.max(0, Math.min(maxH, Math.round(y * scale)));
+        const cx2 = Math.max(0, Math.min(maxW, Math.round((x + width) * scale)));
+        const cy2 = Math.max(0, Math.min(maxH, Math.round((y + height) * scale)));
+
+        const cw = Math.max(1, cx2 - cx1);
+        const ch = Math.max(1, cy2 - cy1);
+
+        const geom = `${Math.round(x + ox)},${Math.round(y + oy)} ${Math.round(width)}x${Math.round(height)}`;
+
+        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then if command -v magick >/dev/null 2>&1; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx1}+${cy1} +repage ${shellEscape(destFile)}; else convert /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx1}+${cy1} +repage ${shellEscape(destFile)}; fi; else grim -s ${scale} -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
     }
 
     function playShutterSound() {
@@ -52,7 +61,9 @@ Scope {
         try {
             freezeWindow.WlrLayershell.keyboardFocus = WlrKeyboardFocus.None;
         } catch(e) {}
-        freezeWindow.visible = false;
+        try {
+            freezeWindow.visible = false;
+        } catch(e) {}
         try {
             Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
         } catch(e) {}
@@ -302,6 +313,15 @@ Scope {
                     event.accepted = true;
                     return;
                 }
+                // Ctrl+C or C (when confirmed): Copy
+                if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_C) || (selector.isConfirmed && event.key === Qt.Key_C)) {
+                    if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
+                        root.doCopy(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
+                    }
+                    event.accepted = true;
+                    return;
+                }
+
                 // Ctrl+S or S (when confirmed): Save
                 if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) || (selector.isConfirmed && event.key === Qt.Key_S)) {
                     if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
