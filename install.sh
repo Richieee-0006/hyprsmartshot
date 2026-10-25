@@ -50,7 +50,7 @@ fi
 # 5. HyprSmartShot configuration template
 CONFIG_DIR="$CONFIG_HOME/hyprsmartshot"
 mkdir -p "$CONFIG_DIR/localization"
-if [ ! -f "$CONFIG_DIR/config.json" ] && [ ! -f "$CONFIG_DIR/config.toml" ]; then
+if [ ! -f "$CONFIG_DIR/config.json" ]; then
     echo "==> Installing default HyprSmartShot config..."
     cp "$DIR/config/hyprsmartshot/config.json" "$CONFIG_DIR/config.json"
 fi

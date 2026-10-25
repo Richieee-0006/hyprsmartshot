@@ -66,7 +66,9 @@ Scope {
         const crop = cropCommand(x, y, width, height, tempCrop);
         const title = I18n.t("copyTitle");
         const desc = I18n.t("copyDesc");
-        const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && rm -f ${shellEscape(tempCrop)}`;
+        const hook = Config.postCopyHook ? Config.postCopyHook.trim() : "";
+        const hookCmd = hook ? ` (${hook.replace(/\{path\}/g, shellEscape(tempCrop))});` : "";
+        const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && {${hookCmd} rm -f ${shellEscape(tempCrop)}; }`;
         playShutterSound();
         Quickshell.execDetached(["sh", "-c", cmd]);
         root.closeOverlay();
@@ -79,7 +81,9 @@ Scope {
         const crop = cropCommand(x, y, width, height, outputPath);
         const title = I18n.t("saveTitle");
         const desc = I18n.t("saveDesc").replace("{path}", outputPath);
-        const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)}`;
+        const hook = Config.postSaveHook ? Config.postSaveHook.trim() : "";
+        const hookCmd = hook ? ` && (${hook.replace(/\{path\}/g, shellEscape(outputPath))})` : "";
+        const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)}${hookCmd}`;
         playShutterSound();
         Quickshell.execDetached(["sh", "-c", cmd]);
         root.closeOverlay();
@@ -120,10 +124,11 @@ Scope {
         const ocrNoTextDesc = I18n.t("ocrNoTextDesc");
         const notFoundTitle = I18n.t("ocrNotFoundTitle");
         const notFoundDesc = I18n.t("ocrNotFoundDesc");
+        const ocrLangs = (Config.ocrLanguages && Config.ocrLanguages.trim().length > 0) ? Config.ocrLanguages.trim() : "eng+ces";
 
         const cmd = `${crop} && {
             if command -v tesseract >/dev/null 2>&1; then
-                TEXT=$(tesseract ${shellEscape(tempCrop)} stdout -l eng+ces 2>/dev/null || true)
+                TEXT=$(tesseract ${shellEscape(tempCrop)} stdout -l ${shellEscape(ocrLangs)} 2>/dev/null || true)
                 if [ -n "$TEXT" ]; then
                     printf "%s" "$TEXT" | wl-copy
                     notify-send -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)}

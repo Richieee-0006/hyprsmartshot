@@ -117,29 +117,36 @@ The installer automatically:
 
 ## Configuration
 
-### Localization & Internationalization (i18n)
+HyprSmartShot uses a clean, unified configuration file located at `~/.config/hyprsmartshot/config.json`.
 
-HyprSmartShot features a generic, dynamic internationalization architecture. While **English (`en`)** (default) and **Czech (`cs`)** are bundled out of the box as reference translations, **any arbitrary language code `{lang}`** (e.g., `de`, `fr`, `es`, `pl`, `ja`, etc.) is dynamically supported without requiring code changes.
+### Configuration Options
 
-#### Configuration
+```json
+{
+  "language": "en",
+  "ocrLanguages": "eng+ces",
+  "postSaveHook": "oxipng -o 4 {path}",
+  "postCopyHook": ""
+}
+```
+
+| Key | Default | Description |
+|---|---|---|
+| `language` | `"en"` | Interface and notification language (`en`, `cs`, or any custom language code) |
+| `ocrLanguages` | `"eng+ces"` | Tesseract OCR language string (e.g., `eng`, `eng+ces`, `deu+eng`, `fra`) |
+| `postSaveHook` | `""` | Shell command executed after saving a screenshot (`{path}` is replaced with the file path) |
+| `postCopyHook` | `""` | Shell command executed after copying a selection (`{path}` is replaced with the temporary file path) |
+
+#### Language Resolution Order
 
 Language preference is resolved in the following priority order:
 1. Environment variable: `SMARTSHOT_LANG` (e.g., `SMARTSHOT_LANG=de hyprsmartshot universal`)
 2. User JSON config: `~/.config/hyprsmartshot/config.json`
-3. User TOML config: `~/.config/hyprsmartshot/config.toml`
-4. Bundled fallback: `config/hyprsmartshot/config.json` (defaults to `"en"`)
+3. Bundled fallback: `config/hyprsmartshot/config.json` (defaults to `"en"`)
 
-Example `~/.config/hyprsmartshot/config.json`:
-```json
-{
-  "language": "en"
-}
-```
+### Localization & Internationalization (i18n)
 
-Example `~/.config/hyprsmartshot/config.toml`:
-```toml
-language = "en"
-```
+HyprSmartShot features a generic, dynamic internationalization architecture. While **English (`en`)** (default) and **Czech (`cs`)** are bundled out of the box as reference translations, **any arbitrary language code `{lang}`** (e.g., `de`, `fr`, `es`, `pl`, `ja`, etc.) is dynamically supported without requiring code changes.
 
 #### How Users Can Add or Customize Languages
 
@@ -156,7 +163,7 @@ You can easily add your own language or override existing phrases locally withou
 2. **Translate the values** in your new `<lang>.json` file.
 
 3. **Activate the language**:
-   Set `"language": "<lang>"` in `~/.config/hyprsmartshot/config.json` (or `language = "<lang>"` in `config.toml`), or test immediately:
+   Set `"language": "<lang>"` in `~/.config/hyprsmartshot/config.json`, or test immediately:
    ```bash
    SMARTSHOT_LANG=de hyprsmartshot universal
    ```
