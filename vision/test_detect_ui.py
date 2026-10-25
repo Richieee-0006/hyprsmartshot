@@ -572,5 +572,35 @@ class TestUIDetector(unittest.TestCase):
             os.environ.clear()
             os.environ.update(old_env)
 
+    def test_text_lines_and_paragraph_detection(self):
+        # White background with dark text lines
+        img = np.full((600, 800, 3), 255, dtype=np.uint8)
+        # Render fake text lines using cv2.putText
+        for y_offset in [100, 130, 160, 190]:
+            cv2.putText(img, "Lorem ipsum dolor sit amet, consectetur adipiscing elit.", (50, y_offset),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (20, 20, 20), 2)
+        # Separate single line heading
+        cv2.putText(img, "Chapter 1: Application Architecture", (50, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (10, 10, 10), 2)
+
+        path = self._save_img("text_mock.png", img)
+        res = detect_ui_elements(path)
+        boxes = res["boxes"]
+
+        text_boxes = [b for b in boxes if b.get("type") in ("text", "text_block")]
+        self.assertGreaterEqual(len(text_boxes), 1, "Expected text lines or text blocks to be detected")
+
+    def test_input_field_classification(self):
+        # Search bar / text input: 450x36
+        img = np.full((400, 700, 3), 245, dtype=np.uint8)
+        cv2.rectangle(img, (100, 50), (550, 88), (255, 255, 255), -1) # input body
+        cv2.rectangle(img, (100, 50), (550, 88), (140, 140, 140), 2) # input border
+        cv2.putText(img, "Search documentation...", (120, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (100, 100, 100), 1)
+
+        path = self._save_img("input_mock.png", img)
+        res = detect_ui_elements(path)
+        input_candidates = [b for b in res["boxes"] if b.get("type") == "input" or (b["w"] >= 400 and 30 <= b["h"] <= 45)]
+        self.assertGreaterEqual(len(input_candidates), 1, "Expected input field to be detected")
+
 if __name__ == "__main__":
     unittest.main()

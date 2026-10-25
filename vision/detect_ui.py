@@ -96,11 +96,14 @@ def deduplicate_boxes(boxes, iou_thresh=0.72, contain_thresh=0.88):
 
                 # Upgrade semantic type if new box is more specific
                 type_priority = {
-                    "grid_container": 6,
-                    "grid_row": 5,
-                    "slot": 4,
-                    "item": 3,
-                    "button": 3,
+                    "grid_container": 7,
+                    "grid_row": 6,
+                    "slot": 5,
+                    "item": 4,
+                    "button": 4,
+                    "input": 4,
+                    "text_block": 3,
+                    "text": 3,
                     "panel": 2,
                     "detected": 1
                 }
@@ -391,6 +394,65 @@ def detect_window_content_areas(gray, client_boxes):
 
     return content_boxes
 
+def detect_text_regions(gray, orig_w, orig_h):
+    """
+    Detects text lines, code blocks, labels, and paragraph blocks.
+    Uses horizontal morphological gradient to capture character strokes,
+    and directional morphology to bridge letters into lines and lines into paragraphs.
+    """
+    # 1. Sobel-x gradient captures vertical character strokes (letters)
+    grad_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
+    grad_x = cv2.convertScaleAbs(grad_x)
+
+    # 2. Horizontal closing connects letters into words and words into lines
+    k_line = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 3))
+    closed_line = cv2.morphologyEx(grad_x, cv2.MORPH_CLOSE, k_line)
+    _, thresh_line = cv2.threshold(closed_line, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+
+    contours_line, _ = cv2.findContours(thresh_line, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    text_boxes = []
+
+    for cnt in contours_line:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if w >= 20 and 8 <= h <= 54:
+            # Check internal pixel standard deviation to ensure it contains texture/glyphs
+            roi = gray[y:y+h, x:x+w]
+            if roi.size and float(np.std(roi)) >= 6.5:
+                text_boxes.append({
+                    'x': int(x),
+                    'y': int(y),
+                    'w': int(w),
+                    'h': int(h),
+                    'area': int(w * h),
+                    'extent': 0.95,
+                    'contrast': 30.0,
+                    'type': 'text'
+                })
+
+    # 3. Vertical closing on the line mask to synthesize paragraph and code blocks
+    k_para = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 15))
+    closed_para = cv2.morphologyEx(thresh_line, cv2.MORPH_CLOSE, k_para)
+    contours_para, _ = cv2.findContours(closed_para, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    for cnt in contours_para:
+        x, y, w, h = cv2.boundingRect(cnt)
+        # Paragraphs must have substantial height (at least 2 lines) and width
+        if w >= 36 and h >= 26 and (w * h) >= 1200:
+            roi = gray[y:y+h, x:x+w]
+            if roi.size and float(np.std(roi)) >= 6.5:
+                text_boxes.append({
+                    'x': int(x),
+                    'y': int(y),
+                    'w': int(w),
+                    'h': int(h),
+                    'area': int(w * h),
+                    'extent': 0.96,
+                    'contrast': 35.0,
+                    'type': 'text_block'
+                })
+
+    return text_boxes
+
 def is_duplicate(a, b, tol=5):
     """Checks whether box a and box b are virtually identical."""
     return (abs(a['x'] - b['x']) <= tol and
@@ -536,8 +598,8 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
         if box_area < min_area or box_area > max_area:
             continue
 
-        # Filter out extreme text slivers (single line of text inside dialogues)
-        if (w / h > 12 or h / w > 12) and (h < 20 or w < 20):
+        # Filter out extreme 1-4px line dividers
+        if (h <= 4 and w > 40) or (w <= 4 and h > 40):
             continue
 
         area = cv2.contourArea(cnt)
@@ -562,8 +624,8 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
             elem_type = "panel"
         elif 10 <= w <= 180 and 10 <= h <= 180 and 0.65 <= (w / h) <= 1.54:
             elem_type = "slot"
-        elif 20 <= w <= 260 and 10 <= h <= 64:
-            elem_type = "button"
+        elif 20 <= w <= 800 and 12 <= h <= 64:
+            elem_type = "input" if w > 260 else "button"
 
         raw_boxes.append({
             "x": int(x),
@@ -611,7 +673,10 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     # 3c. Detect window content viewports (web page body below browser header)
     window_content_areas = detect_window_content_areas(gray, client_boxes)
 
-    all_boxes = deduped_raw + synthesized + column_unions + window_content_areas
+    # 3d. Detect text lines, code snippets, labels, and paragraph blocks
+    text_regions = detect_text_regions(gray, orig_w, orig_h)
+
+    all_boxes = deduped_raw + synthesized + column_unions + window_content_areas + text_regions
 
     # 4. Final deduplication pass to merge synthesized grids with detected panels
     final_deduped = deduplicate_boxes(all_boxes, iou_thresh=0.80, contain_thresh=0.90)

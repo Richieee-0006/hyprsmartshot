@@ -212,6 +212,9 @@ Singleton {
             "tagItem": "Item 󰆦 • ",
             "tagPanel": "Panel 󱂬 • ",
             "tagButton": "Button 󰐥 • ",
+            "tagInput": "Input 󰌌 • ",
+            "tagText": "Text 󰉿 • ",
+            "tagParagraph": "Paragraph 󰉿 • ",
             "tagScreen": "Screen 󰍹 • ",
             "scrollHint": "[Scroll 󰒉]",
             "copyTitle": "Screenshot Copied",
@@ -251,6 +254,9 @@ Singleton {
             "tagItem": "Předmět 󰆦 • ",
             "tagPanel": "Panel 󱂬 • ",
             "tagButton": "Tlačítko 󰐥 • ",
+            "tagInput": "Vstup 󰌌 • ",
+            "tagText": "Text 󰉿 • ",
+            "tagParagraph": "Odstavec 󰉿 • ",
             "tagScreen": "Obrazovka 󰍹 • ",
             "scrollHint": "[Kolečko 󰒉]",
             "copyTitle": "Screenshot zkopírován",
@@ -343,6 +349,9 @@ Singleton {
             case "item": return t("tagItem");
             case "panel": return t("tagPanel");
             case "button": return t("tagButton");
+            case "input": return t("tagInput");
+            case "text": return t("tagText");
+            case "text_block": return t("tagParagraph");
             case "screen": return t("tagScreen");
             default: return "";
         }

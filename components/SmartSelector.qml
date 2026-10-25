@@ -123,28 +123,57 @@ Item {
         setSelection(root.selectionX, root.selectionY, newW, newH);
     }
 
+    function loadDetectedBoxes(jsonText) {
+        try {
+            const data = JSON.parse(jsonText);
+            if (data && Array.isArray(data.boxes)) {
+                const s = root.monitorScale;
+                root.detectedBoxes = data.boxes.map(b => ({
+                    x: b.x / s,
+                    y: b.y / s,
+                    w: b.w / s,
+                    h: b.h / s,
+                    area: (b.w * b.h) / (s * s),
+                    type: b.type || "detected",
+                    depth: b.depth || 0,
+                    title: b.title || "",
+                    class: b.class || ""
+                }));
+                if (root.detectedBoxes.length > 0 && !root.isConfirmed && !root.isDragging) {
+                    root.updateHoverCandidates(root.cursorX, root.cursorY);
+                }
+            }
+        } catch (e) {
+            console.warn("[HyprSmartShot] Failed to parse boxes JSON:", e);
+        }
+    }
+
     // Load CV boxes from JSON file with monitor scale normalization
     FileView {
         id: boxesFile
         path: "/tmp/hyprsmartshot_boxes.json"
         onLoaded: {
-            try {
-                const data = JSON.parse(text());
-                if (data && Array.isArray(data.boxes)) {
-                    const s = root.monitorScale;
-                    root.detectedBoxes = data.boxes.map(b => ({
-                        x: b.x / s,
-                        y: b.y / s,
-                        w: b.w / s,
-                        h: b.h / s,
-                        area: (b.w * b.h) / (s * s),
-                        type: b.type || "detected",
-                        depth: b.depth || 0
-                    }));
-                }
-            } catch (e) {
-                console.warn("[HyprSmartShot] Failed to parse boxes JSON:", e);
+            root.loadDetectedBoxes(text());
+        }
+    }
+
+    // Dynamic watcher/polling timer: if CV was still computing when overlay launched,
+    // re-trigger FileView once CV finishes writing to disk
+    Timer {
+        id: boxesReloadTimer
+        interval: 50
+        repeat: true
+        running: root.detectedBoxes.length === 0 && !root.isConfirmed
+        property int attempts: 0
+        onTriggered: {
+            attempts++;
+            if (attempts > 30 || root.detectedBoxes.length > 0) {
+                running = false;
+                return;
             }
+            const p = boxesFile.path;
+            boxesFile.path = "";
+            boxesFile.path = p;
         }
     }
 

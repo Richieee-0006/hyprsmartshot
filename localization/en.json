@@ -21,6 +21,9 @@
   "tagItem": "Item 󰆦 • ",
   "tagPanel": "Panel 󱂬 • ",
   "tagButton": "Button 󰐥 • ",
+  "tagInput": "Input 󰌌 • ",
+  "tagText": "Text 󰉿 • ",
+  "tagParagraph": "Paragraph 󰉿 • ",
   "tagScreen": "Screen 󰍹 • ",
   "scrollHint": "[Scroll 󰒉]",
 

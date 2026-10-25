@@ -284,9 +284,9 @@ case "$MODE" in
     *)           export SMARTSHOT_MODE="universal" ;;
 esac
 
-# 4. Wait briefly for CV to finish (takes ~30-60ms, bounded to 100ms max so overlay never hangs)
+# 4. Wait for CV to finish (typically ~250-400ms, bounded to 800ms max so overlay never hangs)
 if [ -n "$CV_PID" ]; then
-    for _ in {1..10}; do
+    for _ in {1..80}; do
         if ! kill -0 "$CV_PID" 2>/dev/null; then
             break
         fi

@@ -43,8 +43,8 @@ HyprSmartShot is a high-performance Wayland/Hyprland screenshot utility with Com
 ## Milestones
 | # | Name | Scope | Dependencies | Status |
 |---|------|-------|-------------|--------|
-| M1 | Urgent Fixes: Action Hanging & Browser Body | R1, R2: Register Config singleton in `qmldir`, wrap actions in `try/catch/finally`, implement `SMARTSHOT_WORKSPACE_ID` client filtering in `detect_ui.py`, verify column clustering and browser body detection, tests passing on branch `fix/action-hanging-and-browser-body` | none | IN_PROGRESS |
-| M2 | Pin to Screen: Native Wayland Window | R3: `bin/hyprsmartshot-pin` with PySide6 XDG Toplevel, `startSystemMove()`, zoom, shortcuts, `ActionPill.qml` pin button, `shell.qml` shortcut `P`, i18n keys, installer updates on branch `feat/pin-to-screen` | M1 | PLANNED |
+| M1 | Urgent Fixes: Action Hanging & Browser Body | R1, R2: Register Config singleton in `qmldir`, wrap actions in `try/catch/finally`, implement `SMARTSHOT_WORKSPACE_ID` client filtering in `detect_ui.py`, verify column clustering and browser body detection, tests passing on branch `fix/action-hanging-and-browser-body` | none | DONE |
+| M2 | Pin to Screen: Native Wayland Window | R3: `bin/hyprsmartshot-pin` with PySide6 XDG Toplevel, `startSystemMove()`, zoom, shortcuts, `ActionPill.qml` pin button, `shell.qml` shortcut `P`, i18n keys, installer updates on branch `feat/pin-to-screen` | M1 | IN_PROGRESS |
 | M3 | AUR Packaging | R4: `packaging/arch/PKGBUILD`, `PKGBUILD-git`, `.SRCINFO`, `hyprsmartshot.desktop`, namcap/desktop-file-validate, packaging CI step on branch `feat/aur-packaging` | M2 | PLANNED |
 | M4 | Wayland Multi-Monitor & Fractional Scaling | R5: Endpoint-difference transform (`cx2 - cx1`) in `shell.qml`, boundary clamping, `detect_ui.py` multi-monitor offset and coordinate normalization, grim `-s "$scale"`, CI branch trigger glob on branch `feat/wayland-scaling-and-monitors` | M3 | PLANNED |
 | M5 | Final E2E Acceptance & Remote CI | R6: Full test suite execution across tests and vision, git merge to `origin/main`, CI matrix verification, Sentinel report | M4 | PLANNED |
