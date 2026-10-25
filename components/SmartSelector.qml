@@ -514,7 +514,7 @@ Item {
                     const c = raw.lastIpcObject || raw;
                     if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
                     if (c.hidden === true || c.mapped === false) continue;
-                    if (envWs > 0 && c.workspace && c.workspace.id !== envWs) continue;
+                    if (envWs > 0 && !c.pinned && c.workspace && c.workspace.id !== envWs) continue;
                     const wx = c.at[0] - ox;
                     const wy = c.at[1] - oy;
                     const ww = c.size[0];
@@ -712,7 +712,7 @@ Item {
                 const c = root.cachedHyprClients[i];
                 if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
                 if (c.hidden === true || c.mapped === false) continue;
-                if (envWs > 0 && c.workspace && c.workspace.id !== envWs) continue;
+                if (envWs > 0 && !c.pinned && c.workspace && c.workspace.id !== envWs) continue;
                 const p1 = (axis === 'x') ? (c.at[0] - envOx) : (c.at[1] - envOy);
                 const p2 = (axis === 'x') ? (p1 + c.size[0]) : (p1 + c.size[1]);
                 const d1 = Math.abs(val - p1);
@@ -735,7 +735,7 @@ Item {
                     const w = all[i];
                     if (!w || !w.lastIpcObject || !Array.isArray(w.lastIpcObject.at) || !Array.isArray(w.lastIpcObject.size)) continue;
                     if (w.lastIpcObject.hidden === true || w.lastIpcObject.mapped === false) continue;
-                    if (envWs > 0 && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
+                    if (envWs > 0 && !w.lastIpcObject.pinned && w.lastIpcObject.workspace && w.lastIpcObject.workspace.id !== envWs) continue;
                     const p1 = (axis === 'x') ? (w.lastIpcObject.at[0] - ox) : (w.lastIpcObject.at[1] - oy);
                     const p2 = (axis === 'x') ? (p1 + w.lastIpcObject.size[0]) : (p1 + w.lastIpcObject.size[1]);
                     const d1 = Math.abs(val - p1);
