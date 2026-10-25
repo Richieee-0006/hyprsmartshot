@@ -39,8 +39,8 @@ echo ""
 echo "✨ HyprSmartShot installed successfully!"
 echo "   Binary linked to: $BIN_DIR/hyprsmartshot"
 echo ""
-echo "To bind in Hyprland, add to ~/.config/hypr/hyprland.conf:"
-echo '  bind = , Print, exec, hyprsmartshot universal'
-echo '  bind = SHIFT, Print, exec, hyprsmartshot full'
-echo '  bind = CTRL, Print, exec, hyprsmartshot window'
+echo "To bind in Hyprland Lua (e.g. ~/.config/hypr/modules/keybinds.lua):"
+echo '  hl.bind("Print", hl.dsp.exec_cmd("hyprsmartshot universal"))'
+echo '  hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprsmartshot screen"))'
+echo '  hl.bind("CTRL + Print", hl.dsp.exec_cmd("hyprsmartshot window"))'
 echo ""

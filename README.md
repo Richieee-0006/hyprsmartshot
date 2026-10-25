@@ -115,30 +115,20 @@ The installer automatically:
 
 ## Configuration
 
-### Hyprland Keybindings
+### Hyprland Lua Configuration
 
-Add the following bindings to `~/.config/hypr/hyprland.conf`:
+Hyprland natively uses Lua scripting. Add the keybindings and window rules to your configuration (e.g., `~/.config/hypr/hyprland.lua` or under `~/.config/hypr/modules/`):
 
-```ini
-# HyprSmartShot Keybindings
-bind = , Print, exec, hyprsmartshot universal
-bind = SHIFT, Print, exec, hyprsmartshot full
-bind = CTRL, Print, exec, hyprsmartshot window
+#### Keybindings (`modules/keybinds.lua`)
+```lua
+-- HyprSmartShot Keybindings
+hl.bind("Print", hl.dsp.exec_cmd("hyprsmartshot universal"))
+hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprsmartshot screen"))
+hl.bind("CTRL + Print", hl.dsp.exec_cmd("hyprsmartshot window"))
 ```
 
-### Satty Floating Window Rule
-
-To ensure the Satty annotation editor opens as an aesthetic centered floating modal with ambient dimming, add this window rule to your Hyprland configuration (`~/.config/hypr/hyprland.conf` or `rules.lua`):
-
-**In standard `hyprland.conf` format:**
-```ini
-windowrulev2 = float, class:^(com\.gabm\.satty|satty)$
-windowrulev2 = center, class:^(com\.gabm\.satty|satty)$
-windowrulev2 = pin, class:^(com\.gabm\.satty|satty)$
-windowrulev2 = dimaround, class:^(com\.gabm\.satty|satty)$
-```
-
-**In Hyprland Lua modules (`rules.lua`):**
+#### Satty Floating Window Rule (`modules/rules.lua`)
+To ensure the Satty annotation editor opens as an aesthetic centered floating modal with ambient dimming:
 ```lua
 hl.window_rule({
     match = { class = "^(com\\.gabm\\.satty|satty)$" },
@@ -149,6 +139,23 @@ hl.window_rule({
     dim_around = true,
 })
 ```
+
+<details>
+<summary>Legacy <code>hyprland.conf</code> syntax (for older Hyprland versions)</summary>
+
+```ini
+# Keybindings
+bind = , Print, exec, hyprsmartshot universal
+bind = SHIFT, Print, exec, hyprsmartshot full
+bind = CTRL, Print, exec, hyprsmartshot window
+
+# Window rules
+windowrulev2 = float, class:^(com\.gabm\.satty|satty)$
+windowrulev2 = center, class:^(com\.gabm\.satty|satty)$
+windowrulev2 = pin, class:^(com\.gabm\.satty|satty)$
+windowrulev2 = dimaround, class:^(com\.gabm\.satty|satty)$
+```
+</details>
 
 ---
 
