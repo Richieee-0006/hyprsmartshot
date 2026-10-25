@@ -453,7 +453,6 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     if clients_path and os.path.isfile(clients_path):
         try:
             active_ws_str = os.environ.get("SMARTSHOT_WORKSPACE_ID", "").strip()
-            active_ws = int(active_ws_str) if active_ws_str.lstrip("-").isdigit() else None
             mon_x_str = os.environ.get("SMARTSHOT_MONITOR_X", "").strip()
             mon_y_str = os.environ.get("SMARTSHOT_MONITOR_Y", "").strip()
             mon_x = int(float(mon_x_str)) if mon_x_str else 0
@@ -475,10 +474,16 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                         if c.get("hidden") is True or c.get("mapped") is False:
                             continue
                         is_pinned = bool(c.get("pinned", False))
-                        if active_ws is not None and not is_pinned:
-                            ws = c.get("workspace", {})
-                            ws_id = ws.get("id") if isinstance(ws, dict) else None
-                            if ws_id is not None and ws_id != active_ws:
+                        if active_ws_str and not is_pinned:
+                            ws = c.get("workspace")
+                            ws_id = ws.get("id") if isinstance(ws, dict) else ws
+                            ws_name = ws.get("name") if isinstance(ws, dict) else None
+                            matches = False
+                            if ws_id is not None and str(ws_id) == active_ws_str:
+                                matches = True
+                            elif ws_name is not None and str(ws_name) == active_ws_str:
+                                matches = True
+                            if not matches:
                                 continue
                         at = c.get("at", [])
                         size = c.get("size", [])
@@ -491,28 +496,34 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                                 phys_w = int(round(cw * mon_scale))
                                 phys_h = int(round(ch * mon_scale))
 
-                                # Skip windows outside current monitor viewport
-                                if phys_x + phys_w <= 0 or phys_x >= orig_w or phys_y + phys_h <= 0 or phys_y >= orig_h:
-                                    continue
-                                is_fl = bool(c.get("floating", False))
-                                win_obj = {
-                                    "x": int(phys_x),
-                                    "y": int(phys_y),
-                                    "w": int(phys_w),
-                                    "h": int(phys_h),
-                                    "area": int(phys_w * phys_h),
-                                    "extent": 1.0,
-                                    "contrast": 60.0,
-                                    "type": "floating_window" if is_fl else "window",
-                                    "floating": is_fl,
-                                    "pinned": bool(c.get("pinned", False)),
-                                    "focusHistoryID": c.get("focusHistoryID", 999),
-                                    "title": c.get("title", ""),
-                                    "class": c.get("class", ""),
-                                    "is_client": True
-                                }
-                                raw_boxes.append(win_obj)
-                                client_boxes.append(win_obj)
+                                # Clamping [0, orig_w] and [0, orig_h]
+                                clamped_x1 = max(0, min(orig_w, phys_x))
+                                clamped_y1 = max(0, min(orig_h, phys_y))
+                                clamped_x2 = max(0, min(orig_w, phys_x + phys_w))
+                                clamped_y2 = max(0, min(orig_h, phys_y + phys_h))
+                                clamped_w = clamped_x2 - clamped_x1
+                                clamped_h = clamped_y2 - clamped_y1
+
+                                if clamped_w >= 20 and clamped_h >= 20:
+                                    is_fl = bool(c.get("floating", False))
+                                    win_obj = {
+                                        "x": int(clamped_x1),
+                                        "y": int(clamped_y1),
+                                        "w": int(clamped_w),
+                                        "h": int(clamped_h),
+                                        "area": int(clamped_w * clamped_h),
+                                        "extent": 1.0,
+                                        "contrast": 60.0,
+                                        "type": "floating_window" if is_fl else "window",
+                                        "floating": is_fl,
+                                        "pinned": is_pinned,
+                                        "focusHistoryID": c.get("focusHistoryID", 999),
+                                        "title": c.get("title", ""),
+                                        "class": c.get("class", ""),
+                                        "is_client": True
+                                    }
+                                    raw_boxes.append(win_obj)
+                                    client_boxes.append(win_obj)
         except Exception:
             pass
 
@@ -605,8 +616,26 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     # 4. Final deduplication pass to merge synthesized grids with detected panels
     final_deduped = deduplicate_boxes(all_boxes, iou_thresh=0.80, contain_thresh=0.90)
 
+    # Clamping and filtering minimum size
+    clamped_boxes = []
+    for b in final_deduped:
+        bx1 = max(0, min(orig_w, b["x"]))
+        by1 = max(0, min(orig_h, b["y"]))
+        bx2 = max(0, min(orig_w, b["x"] + b["w"]))
+        by2 = max(0, min(orig_h, b["y"] + b["h"]))
+        bw = bx2 - bx1
+        bh = by2 - by1
+        if bw < 8 or bh < 8:
+            continue
+        b["x"] = int(bx1)
+        b["y"] = int(by1)
+        b["w"] = int(bw)
+        b["h"] = int(bh)
+        b["area"] = int(bw * bh)
+        clamped_boxes.append(b)
+
     # Semantic hierarchy depth calculation
-    boxes_asc = sorted(final_deduped, key=lambda b: b["area"])
+    boxes_asc = sorted(clamped_boxes, key=lambda b: b["area"])
     for i, box in enumerate(boxes_asc):
         box["id"] = i
         parents = [p for p in boxes_asc if p["area"] > box["area"] * 1.05 and
