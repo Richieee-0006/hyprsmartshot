@@ -6,6 +6,7 @@ Verifies JSON validity, key parity across languages, config loading, and runner 
 
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -271,6 +272,7 @@ class TestRunnerLanguageResolution(unittest.TestCase):
 
 
 
+@unittest.skipUnless(shutil.which("quickshell"), "quickshell binary not available in environment")
 class TestQuickshellQmlIntegration(unittest.TestCase):
     def test_qml_i18n_loading_and_methods(self):
         test_qml = f"""
