@@ -11,7 +11,6 @@ Singleton {
         || (Quickshell.env("XDG_DATA_HOME") ? (Quickshell.env("XDG_DATA_HOME") + "/hyprsmartshot") : (Quickshell.env("HOME") + "/.local/share/hyprsmartshot"))
     readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/hyprsmartshot"
     readonly property string configJsonPath: configDir + "/config.json"
-    readonly property string configTomlPath: configDir + "/config.toml"
     readonly property string defaultJsonPath: repoDir + "/config/hyprsmartshot/config.json"
 
     function sanitizeLang(code) {
@@ -77,23 +76,7 @@ Singleton {
         }
     }
 
-    // 2. Watch user config.toml (if user prefers TOML)
-    FileView {
-        id: configTomlFile
-        path: root.configTomlPath
-        printErrors: false
-        onLoaded: {
-            if (Quickshell.env("SMARTSHOT_LANG") || root.configJsonLoaded) return;
-            try {
-                const m = text().match(/^\s*language\s*=\s*["']([^"']+)["']/m);
-                if (m && m[1] && m[1].trim().length > 0) {
-                    root.language = root.sanitizeLang(m[1]);
-                }
-            } catch (e) {}
-        }
-    }
-
-    // 3. Fallback to bundled config.json if user has no config
+    // 2. Fallback to bundled config.json if user has no config
     FileView {
         id: defaultConfigFile
         path: root.defaultJsonPath

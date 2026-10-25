@@ -1,3 +1,6 @@
 {
-  "language": "en"
+  "language": "en",
+  "ocrLanguages": "eng+ces",
+  "postSaveHook": "",
+  "postCopyHook": ""
 }

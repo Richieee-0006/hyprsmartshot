@@ -89,16 +89,12 @@ CLEANUP_PID_FILE="/tmp/hyprsmartshot_cleanup.pid"
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hyprsmartshot"
 CONFIG_FILE="$CONFIG_DIR/config.json"
-CONFIG_TOML="$CONFIG_DIR/config.toml"
 DEFAULT_CONFIG="$DIR/config/hyprsmartshot/config.json"
 
 # Resolve language preference (default: "en", with dynamic arbitrary language code support)
 if [ -z "$SMARTSHOT_LANG" ]; then
     if [ -f "$CONFIG_FILE" ]; then
         SMARTSHOT_LANG=$(jq -r '.language // empty' "$CONFIG_FILE" 2>/dev/null || true)
-    fi
-    if [ -z "$SMARTSHOT_LANG" ] && [ -f "$CONFIG_TOML" ]; then
-        SMARTSHOT_LANG=$(grep -E '^\s*language\s*=' "$CONFIG_TOML" 2>/dev/null | sed -E 's/.*=\s*["'\'']?([^"'\'']+)["'\'']?.*/\1/' || true)
     fi
     if [ -z "$SMARTSHOT_LANG" ] && [ -f "$DEFAULT_CONFIG" ]; then
         SMARTSHOT_LANG=$(jq -r '.language // empty' "$DEFAULT_CONFIG" 2>/dev/null || true)
@@ -216,6 +212,19 @@ if [ "$MODE" = "full" ]; then
     shopt -u patsub_replacement 2>/dev/null || true
     FS_DESC="${FS_DESC_FMT/\{path\}/$FILEPATH}"
     notify-send -a "HyprSmartShot" -i "$FILEPATH" "$FS_TITLE" "$FS_DESC"
+
+    POST_SAVE_HOOK=""
+    if [ -f "$CONFIG_FILE" ]; then
+        POST_SAVE_HOOK=$(jq -r '.postSaveHook // empty' "$CONFIG_FILE" 2>/dev/null || true)
+    fi
+    if [ -z "$POST_SAVE_HOOK" ] && [ -f "$DEFAULT_CONFIG" ]; then
+        POST_SAVE_HOOK=$(jq -r '.postSaveHook // empty' "$DEFAULT_CONFIG" 2>/dev/null || true)
+    fi
+    if [ -n "$POST_SAVE_HOOK" ]; then
+        HOOK_CMD="${POST_SAVE_HOOK//\{path\}/\"$FILEPATH\"}"
+        ( eval "$HOOK_CMD" ) >/dev/null 2>&1 &
+    fi
+
     exit 0
 fi
 

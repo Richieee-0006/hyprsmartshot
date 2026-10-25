@@ -133,12 +133,12 @@ class TestRunnerLanguageResolution(unittest.TestCase):
         self.assertEqual(proc_en.returncode, 0, proc_en.stderr)
         self.assertEqual(proc_en.stdout.strip(), "Screenshot Copied")
 
-    def test_runner_config_resolution_json_and_toml(self):
+    def test_runner_config_resolution_json(self):
         with tempfile.TemporaryDirectory() as tmp_xdg:
             cfg_dir = os.path.join(tmp_xdg, "hyprsmartshot")
             os.makedirs(cfg_dir, exist_ok=True)
 
-            # Test 1: JSON config
+            # Test 1: User config.json
             with open(os.path.join(cfg_dir, "config.json"), "w") as f:
                 json.dump({"language": "cs"}, f)
 
@@ -148,15 +148,11 @@ class TestRunnerLanguageResolution(unittest.TestCase):
             unset SMARTSHOT_LANG
             CONFIG_DIR="$XDG_CONFIG_HOME/hyprsmartshot"
             CONFIG_FILE="$CONFIG_DIR/config.json"
-            CONFIG_TOML="$CONFIG_DIR/config.toml"
             DEFAULT_CONFIG="$DIR/config/hyprsmartshot/config.json"
 
             if [ -z "$SMARTSHOT_LANG" ]; then
                 if [ -f "$CONFIG_FILE" ]; then
                     SMARTSHOT_LANG=$(jq -r '.language // empty' "$CONFIG_FILE" 2>/dev/null || true)
-                fi
-                if [ -z "$SMARTSHOT_LANG" ] && [ -f "$CONFIG_TOML" ]; then
-                    SMARTSHOT_LANG=$(grep -E '^\\s*language\\s*=' "$CONFIG_TOML" 2>/dev/null | sed -E 's/.*=\\s*["'\\''"]?([^"'\\''"]+)["'\\''"]?.*/\\1/' || true)
                 fi
                 if [ -z "$SMARTSHOT_LANG" ] && [ -f "$DEFAULT_CONFIG" ]; then
                     SMARTSHOT_LANG=$(jq -r '.language // empty' "$DEFAULT_CONFIG" 2>/dev/null || true)
@@ -168,24 +164,16 @@ class TestRunnerLanguageResolution(unittest.TestCase):
             self.assertEqual(proc.returncode, 0)
             self.assertEqual(proc.stdout.strip(), "cs")
 
-            # Test 2: JSON without language falls back to TOML
+            # Test 2: User JSON without language falls back to default
             with open(os.path.join(cfg_dir, "config.json"), "w") as f:
                 json.dump({"other_setting": True}, f)
-            with open(os.path.join(cfg_dir, "config.toml"), "w") as f:
-                f.write('language = "cs"\n')
 
-            proc_toml_fallback = subprocess.run(["bash", "-c", bash_check], capture_output=True, text=True)
-            self.assertEqual(proc_toml_fallback.returncode, 0)
-            self.assertEqual(proc_toml_fallback.stdout.strip(), "cs")
+            proc_fallback = subprocess.run(["bash", "-c", bash_check], capture_output=True, text=True)
+            self.assertEqual(proc_fallback.returncode, 0)
+            self.assertEqual(proc_fallback.stdout.strip(), "en")
 
-            # Test 3: TOML config (when JSON is removed)
+            # Test 3: Absence of user config.json falls back to default
             os.remove(os.path.join(cfg_dir, "config.json"))
-            proc_toml = subprocess.run(["bash", "-c", bash_check], capture_output=True, text=True)
-            self.assertEqual(proc_toml.returncode, 0)
-            self.assertEqual(proc_toml.stdout.strip(), "cs")
-
-            # Test 4: Fallback default
-            os.remove(os.path.join(cfg_dir, "config.toml"))
             proc_def = subprocess.run(["bash", "-c", bash_check], capture_output=True, text=True)
             self.assertEqual(proc_def.returncode, 0)
             self.assertEqual(proc_def.stdout.strip(), "en")
