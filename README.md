@@ -155,4 +155,4 @@ hl.window_rule({
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-Copyright (c) 2026 Richieee.
+Copyright © 2026 Richieee.
