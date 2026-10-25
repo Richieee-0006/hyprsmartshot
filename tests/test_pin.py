@@ -85,7 +85,9 @@ class TestPinWindowUnit(unittest.TestCase):
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
         cls.app = QApplication.instance() or QApplication(["hyprsmartshot-pin"])
 
-    def _create_test_image(self, width=120, height=80, color=QColor(0, 180, 255)):
+    def _create_test_image(self, width=120, height=80, color=None):
+        if color is None:
+            color = QColor(0, 180, 255)
         tmp = tempfile.NamedTemporaryFile(prefix="hyprsmartshot_pin_test_", suffix=".png", delete=False)
         tmp.close()
         pix = QPixmap(width, height)
