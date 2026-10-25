@@ -33,22 +33,31 @@ Thank you for your interest in contributing to **HyprSmartShot**! We welcome bug
 
 ## Adding a New Language (Localization)
 
-HyprSmartShot is built with community localization in mind:
+HyprSmartShot provides a dedicated helper script to generate and validate translation templates:
 
-1. Copy the reference English translation:
+1. **Generate a translation template**:
    ```bash
-   cp localization/en.json localization/<lang_code>.json
+   # Pre-populate with English reference text:
+   scripts/localization_template.py <lang_code>
+
+   # Or generate with blank values:
+   scripts/localization_template.py <lang_code> --empty
    ```
-   *(e.g., `localization/de.json`, `localization/es.json`, `localization/ja.json`)*
+   *(e.g., `scripts/localization_template.py de`, `scripts/localization_template.py ja`)*
 
-2. Translate the values in `localization/<lang_code>.json`. Keep all keys intact.
+2. **Translate the values**:
+   Edit `localization/<lang_code>.json`. Keep all keys and format placeholders (such as `{path}`) intact.
 
-3. Verify your translation with the test suite:
+3. **Verify your translation**:
    ```bash
-   python3 tests/test_i18n.py
+   # Validate key parity and syntax:
+   scripts/localization_template.py --check <lang_code>
+
+   # Or run the full test suite:
+   python3 -m unittest discover -s tests
    ```
 
-4. Submit a Pull Request!
+4. **Submit a Pull Request**!
 
 ---
 
