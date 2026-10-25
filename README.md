@@ -145,21 +145,17 @@ language = "en"
 
 You can easily add your own language or override existing phrases locally without touching repository files:
 
-1. **Create the user localization folder**:
+1. **Generate the user localization template**:
    ```bash
-   mkdir -p ~/.config/hyprsmartshot/localization
-   ```
-
-2. **Copy the English reference template**:
-   ```bash
-   cp ~/.local/share/hyprsmartshot/localization/en.json ~/.config/hyprsmartshot/localization/<lang>.json
+   scripts/localization_template.py <lang> --user
    # Example for German:
-   cp ~/.local/share/hyprsmartshot/localization/en.json ~/.config/hyprsmartshot/localization/de.json
+   scripts/localization_template.py de --user
    ```
+   *(This creates `~/.config/hyprsmartshot/localization/<lang>.json` populated from the English reference)*
 
-3. **Translate the values** in your new `<lang>.json` file.
+2. **Translate the values** in your new `<lang>.json` file.
 
-4. **Activate the language**:
+3. **Activate the language**:
    Set `"language": "<lang>"` in `~/.config/hyprsmartshot/config.json` (or `language = "<lang>"` in `config.toml`), or test immediately:
    ```bash
    SMARTSHOT_LANG=de hyprsmartshot universal
@@ -176,10 +172,15 @@ HyprSmartShot guarantees seamless partial translation support:
 
 Community translations are warmly encouraged! To submit a new language upstream:
 
-1. Add your language file `localization/<lang>.json` directly to the `localization/` directory (use `localization/en.json` as a reference).
-2. Validate formatting and key parity with existing tests:
+1. Generate a translation template in the repository:
    ```bash
-   python3 tests/test_i18n.py
+   scripts/localization_template.py <lang>
+   # Or with blank values:
+   scripts/localization_template.py <lang> --empty
+   ```
+2. Translate the values in `localization/<lang>.json` and validate:
+   ```bash
+   scripts/localization_template.py --check <lang>
    ```
 3. Open a Pull Request!
 

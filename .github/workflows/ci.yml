@@ -45,12 +45,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Validate JSON syntax
+      - name: Validate JSON syntax and key parity
         run: |
-          for f in localization/*.json config/hyprsmartshot/*.json; do
+          python3 scripts/localization_template.py --check
+          for f in config/hyprsmartshot/*.json; do
             if [ -f "$f" ]; then
               python3 -m json.tool "$f" > /dev/null
-              echo "✓ $f is valid JSON"
+              echo "[OK] $f is valid JSON"
             fi
           done
 
@@ -65,4 +66,4 @@ jobs:
         run: |
           bash -n bin/hyprsmartshot
           bash -n install.sh
-          echo "✓ Bash scripts syntax validated"
+          echo "[OK] Bash scripts syntax validated"
