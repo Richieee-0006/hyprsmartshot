@@ -4,7 +4,7 @@ Thank you for your interest in contributing to **HyprSmartShot**! We welcome bug
 
 ---
 
-## 🛠️ Development Setup
+## Development Setup
 
 1. **Clone the repository**:
    ```bash
@@ -31,7 +31,7 @@ Thank you for your interest in contributing to **HyprSmartShot**! We welcome bug
 
 ---
 
-## 🌐 Adding a New Language (Localization)
+## Adding a New Language (Localization)
 
 HyprSmartShot is built with community localization in mind:
 
@@ -52,7 +52,7 @@ HyprSmartShot is built with community localization in mind:
 
 ---
 
-## 🌿 Git & Commit Guidelines
+## Git & Commit Guidelines
 
 - **Branching**: Create a dedicated feature branch for your changes:
   ```bash
@@ -68,7 +68,7 @@ HyprSmartShot is built with community localization in mind:
 
 ---
 
-## 📋 Pull Request Process
+## Pull Request Process
 
 1. Ensure all tests pass (`vision/test_detect_ui.py` and `tests/test_i18n.py`).
 2. Fill out the PR template checklist completely.
