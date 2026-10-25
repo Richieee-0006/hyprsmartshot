@@ -1,84 +1,166 @@
 # HyprSmartShot
 
-[![Target](https://img.shields.io/badge/target-Hyprland_Wayland-89b4fa?style=flat-square)](https://hyprland.org)
+[![Target](https://img.shields.io/badge/target-Hyprland_Wayland-89b4fa?style=flat-square&logo=wayland&logoColor=white)](https://hyprland.org)
 [![Toolkit](https://img.shields.io/badge/toolkit-QuickShell_Qt6-a6e3a1?style=flat-square)](https://quickshell.org)
-[![Vision](https://img.shields.io/badge/vision-OpenCV-f9e2af?style=flat-square)](https://opencv.org)
-[![Palette](https://img.shields.io/badge/palette-Pywal_Dynamic-cba6f7?style=flat-square)](https://github.com/dylanaraps/pywal)
+[![Vision](https://img.shields.io/badge/vision-OpenCV-f9e2af?style=flat-square&logo=opencv&logoColor=black)](https://opencv.org)
+[![Palette](https://img.shields.io/badge/palette-Catppuccin_&_Pywal-cba6f7?style=flat-square)](https://github.com/dylanaraps/pywal)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-Ultra-smart screenshotovací utilita pro **Hyprland** s automatickým rozpoznáváním herních rozhraní, inventářů a oken přes Computer Vision.
+An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprland** on Wayland. HyprSmartShot harnesses high-performance Computer Vision (OpenCV) to detect in-game interface panels, inventory grids, individual item slots, dialogue windows, and floating desktop overlays in real time.
+
+> **Repository Description**:  
+> *Ultra-smart screenshot utility for Hyprland with Computer Vision-driven UI & game inventory detection, hierarchical zoom, and instant annotation.*  
+>  
+> **Recommended Topics**:  
+> `hyprland`, `wayland`, `screenshot`, `computer-vision`, `opencv`, `quickshell`, `qml`, `satty`, `ocr`, `tesseract`, `game-ui`, `inventory-detection`, `linux`, `cachyos`
 
 ---
 
-## Přehled úprav a funkcí
+## Architecture & Workflow
 
-| Oblast | Popis |
+```mermaid
+flowchart TD
+    A["User triggers Keybind (Print / Universal)"] --> B["grim captures raw screen snapshot"]
+    B --> C["FreezeScreen locks Wayland display (zero flicker)"]
+    B --> D["detect_ui.py (CLAHE + Canny + Bilateral + Contours)"]
+    B --> E["Hyprland IPC (Client windows & Floating Z-order)"]
+    D --> F["JSON Boxes & Hierarchy Tree"]
+    E --> F
+    F --> G["QuickShell QML Overlay"]
+    G --> H["Hover with Spring Animation & Magnetic Snapping"]
+    H --> I["Hierarchy Cycle (Mouse Wheel Zoom)"]
+    H --> J["Freehand Drag with Magnetic Edge Snapping"]
+    G --> K["Click locks Selection (Confirmation Mode)"]
+    K --> L["Interactive Action Toolbar spawned under Cursor"]
+    L --> M["Copy to Clipboard (wl-copy)"]
+    L --> N["Save to ~/Pictures/Screenshots"]
+    L --> O["Satty v0.22+ Annotation Modal"]
+    L --> P["Tesseract OCR Text Extraction"]
+```
+
+---
+
+## Features
+
+| Feature | Description |
 | :--- | :--- |
-| **Herní UI & Inventáře** | Automatická detekce pravoúhlých i stylizovaných panelů (batohy, sloty předmětů, chatboxy, skill bary, dialogy) přes optimalizovaný OpenCV contour engine (< 60 ms). |
-| **Hierarchický zoom** | Procházení vrstev rozhraní kolečkem myši (`Scroll`) – od konkrétního slotu itemu přes grid batohu až po celou hru. |
-| **Magnetické přichytávání** | Plynulé přitahování hran při volném tažení myší k nalezeným okrajům UI prvků. |
-| **Potvrzovací režim** | Kliknutím se prvek uzamkne a zobrazí se plovoucí akční lišta (`Kopírovat`, `Uložit`, `OCR`, `Lupa`). |
-| **Optické OCR** | Okamžitá extrakce textu dialogů a popisků předmětů do schránky přes `Tesseract`. |
-| **Moderní vizuál** | Plovoucí skleněný panel (glassmorphism), fragment shader pro zaoblené výřezy a dynamické barvy z `pywal`. |
+| **Game UI & Inventory Detection** | Sub-60ms OpenCV contour engine automatically detects square slots, rectangular rows, entire inventory grids (e.g. Minecraft, WoW, Diablo, Terraria), dialogue boxes, buttons, and ornate RPG frames down to 10×10 pixels. |
+| **Hierarchical Wheel Zoom** | Seamlessly navigate UI nesting using the mouse scroll wheel (`Scroll Up / Down`) — drill down to a single item slot or zoom out to the containing grid row, full bag container, or game window. |
+| **Instant Freezed Framebuffer** | Leverages `grim` to capture and hold a freeze-frame before spawning the overlay, preventing window-snapping stutter, cursor flicker, or moving elements from desyncing during selection. |
+| **Floating Overlay Prioritization** | Automatically resolves Hyprland window stacking order: floating overlay dialogs and pinned windows take precedence over background tiled windows. |
+| **Magnetic Snapping** | Freehand dragging magnetically snaps selection borders to detected UI bounds, window frames, and screen edges. |
+| **Confirmation Mode & Controls** | Left-click locks the candidate selection into place, spawning a sleek floating action bar directly beneath the cursor with 8 resize handles for precise adjustments. |
+| **Instant Annotation (Satty)** | Fully integrated with **Satty v0.22+** running as a centered, floating dialog with Catppuccin theme styling and brush smoothing. |
+| **Optical Character Recognition** | Fast one-key OCR powered by `tesseract` (English & Czech preconfigured) with recognized text instantly copied to the Wayland clipboard. |
+| **Pixel Magnifier** | Press `Alt` to toggle an ultra-sharp 4× pixel magnifier with cursor coordinate readouts. |
 
 ---
 
-## Režimy snímání
+## Capture Modes
 
-| Režim | Volba | Popis |
+| Mode | Command | Description |
 | :--- | :--- | :--- |
-| **Smart / Herní** | `universal` (výchozí) | Detekce herních panelů, slotů, plovoucích overlayů i oken + volný výběr tažením myší s magnetickým přichytáváním. |
-| **Okno** | `window` | Nativní přichytávání k oknům Hyprlandu přes IPC (s prioritou pro plovoucí overlay okna). |
-| **Obrazovka** | `screen` | Okamžité zachycení celého monitoru. |
+| **Universal (Default)** | `hyprsmartshot universal` | Smart detection combining Computer Vision UI analysis, Hyprland window boundaries, and freehand magnetic selection. |
+| **Window Only** | `hyprsmartshot window` | Fast native snapping to Hyprland window boundaries (respects workspace filtering and floating z-order). |
+| **Full Screen** | `hyprsmartshot screen` | Instant capture of the entire focused monitor. |
 
 ---
 
-## Ovládání a zkratky
+## Controls & Shortcuts
 
-| Vstup | Akce |
+| Input | Action |
 | :--- | :--- |
-| **Pohyb myší** | Magnetické zvýraznění a přichycení k herním panelům, slotům nebo oknům |
-| **Tažení myší** | Volný obdélníkový výběr s magnetickým přichytáváním k hranám |
-| **Kolečko myši (Scroll)** | Změna úrovně hierarchie (např. slot předmětu $\leftrightarrow$ batoh $\leftrightarrow$ celá hra) |
-| **Levé kliknutí** | **Potvrzovací režim**: Zamkne výběr a zobrazí potvrzovací lištu |
-| **Enter / Dvojklik** | Zkopírování výběru do schránky (`wl-copy`) a ukončení |
-| **Ctrl + S** | Uložení snímku do `~/Pictures/Screenshots/` a zkopírování |
-| **O** | OCR rozpoznání textu z výběru (přes `tesseract`) a zkopírování do schránky |
-| **Alt** | Zapnutí / vypnutí zvětšovací lupy s přesnými pixely |
-| **Esc / Pravé tlačítko** | Odemknutí zamčeného výběru / zrušení a zavření overlaye |
-| **1 / 2 / 3** | Přepínání režimů (Univerzální / Okno / Obrazovka) |
+| **Mouse Hover** | Highlight and smoothly snap to detected game slots, UI elements, or windows |
+| **Mouse Drag** | Freehand region selection with magnetic boundary snapping |
+| **Mouse Wheel (Scroll)** | Cycle semantic hierarchy (e.g. `Item Slot` $\leftrightarrow$ `Grid Row` $\leftrightarrow$ `Bag Container` $\leftrightarrow$ `Game Window`) |
+| **Left Click** | **Confirmation Mode**: Locks selection and displays action bar under cursor |
+| **Enter / Double Click** | Copy selection to clipboard (`wl-copy`) and close overlay |
+| **Ctrl + S** | Save image to `~/Pictures/Screenshots/` and copy to clipboard |
+| **O** | Run OCR on selected region and copy recognized text to clipboard |
+| **Alt** | Toggle pixel-level inspection magnifier |
+| **Esc / Right Click** | Unlock confirmed selection / Cancel and close overlay |
+| **1 / 2 / 3** | Switch active mode on the fly (`Universal` / `Window` / `Screen`) |
 
 ---
 
-## Instalace
+## Dependencies & License Compatibility
 
-1. Naklonuj repozitář:
-   ```bash
-   git clone git@github.com:Richieee-0006/hyprsmartshot.git ~/.local/share/hyprsmartshot
-   ```
+HyprSmartShot is licensed under the permissive **[MIT License](LICENSE)**. Below is the complete dependency matrix and license compatibility analysis:
 
-2. Spusť instalační skript (připraví Python venv s OpenCV a vytvoří symlink do `~/.local/bin/hyprsmartshot`):
-   ```bash
-   cd ~/.local/share/hyprsmartshot
-   ./install.sh
-   ```
+| Component | Role | Project License | Compatibility with MIT |
+| :--- | :--- | :--- | :--- |
+| **[QuickShell](https://quickshell.org)** | Wayland QML shell host | **LGPL-3.0** | **Fully Compatible**: HyprSmartShot scripts and QML are independent client code executed by the standalone `quickshell` runtime without modifying the QuickShell library itself. |
+| **[OpenCV (Python)](https://opencv.org)** | Computer Vision contour engine | **Apache-2.0** | **Fully Compatible**: Apache 2.0 is a permissive license that explicitly permits sublicensing and integration into MIT-licensed projects. |
+| **[NumPy](https://numpy.org)** | Matrix & array calculations | **BSD-3-Clause** | **Fully Compatible**: BSD-3-Clause permits incorporation into MIT projects provided copyright notices are preserved. |
+| **[grim](https://gitlab.freedesktop.org/emersion/grim)** | Screen capture utility | **MIT** | **Fully Compatible**: Identical license terms. |
+| **[slurp](https://github.com/emersion/slurp)** | Screen region selector | **MIT** | **Fully Compatible**: Identical license terms. |
+| **[Satty](https://github.com/gabm/Satty)** | Screenshot annotation editor | **MPL-2.0** | **Fully Compatible**: Satty is executed as an external standalone CLI tool via process isolation (`sh -c`). Weak copyleft (MPL) does not apply to calling scripts. |
+| **[Tesseract](https://github.com/tesseract-ocr/tesseract)** | OCR engine | **Apache-2.0** | **Fully Compatible**: Permissive Apache 2.0 license. |
+| **[wl-clipboard](https://github.com/bugaevc/wl-clipboard)** | Wayland clipboard manager | **GPL-3.0-or-later**| **Fully Compatible**: Invoked as an external command-line utility (`wl-copy`). Subprocess CLI invocation does not constitute a derivative work under GPL terms. |
+| **[Pywal](https://github.com/dylanaraps/pywal)** | Dynamic color generation | **MIT** | **Fully Compatible**: Identical license terms. |
+| **[JetBrainsMono Nerd Font](https://www.nerdfonts.com)** | UI typography | **OFL-1.1** | **Fully Compatible**: Open Font License permits bundling and display. |
+
+> [!NOTE]
+> **Legal Compliance Guarantee**: All external CLI tools (`grim`, `slurp`, `satty`, `wl-copy`, `tesseract`) are decoupled through standard Wayland inter-process communication and POSIX shells. No proprietary or copyleft restrictions are imposed on user installations or derivative workflows.
 
 ---
 
-## Konfigurace
+## Installation
 
-Přidej následující řádky do souboru `~/.config/hypr/hyprland.conf`:
+### 1. Prerequisites (Arch Linux / CachyOS)
+
+Install core packages via `pacman`:
+
+```bash
+sudo pacman -S --needed \
+    quickshell-git \
+    grim \
+    slurp \
+    satty \
+    tesseract \
+    tesseract-data-eng \
+    tesseract-data-ces \
+    wl-clipboard \
+    libnotify \
+    python
+```
+
+### 2. Clone & Run Automated Setup
+
+Clone the repository to your user data directory and run the installer:
+
+```bash
+git clone git@github.com:Richieee-0006/hyprsmartshot.git ~/.local/share/hyprsmartshot
+cd ~/.local/share/hyprsmartshot
+chmod +x install.sh
+./install.sh
+```
+
+The installer automatically:
+1. Creates an isolated Python virtual environment (`.venv`) and installs `opencv-python-headless` and `numpy`.
+2. Creates a symlink in `~/.local/bin/hyprsmartshot`.
+3. Installs the recommended Catppuccin Satty configuration into `~/.config/satty/config.toml` (if not already customized).
+
+---
+
+## Configuration
+
+### Hyprland Keybindings
+
+Add the following bindings to `~/.config/hypr/hyprland.conf`:
 
 ```ini
-# HyprSmartShot
+# HyprSmartShot Keybindings
 bind = , Print, exec, hyprsmartshot universal
 bind = SHIFT, Print, exec, hyprsmartshot full
 bind = CTRL, Print, exec, hyprsmartshot window
 ```
 
-### Anotační nástroj (Satty)
+### Satty Floating Window Rule
 
-Pro estetické zobrazení anotačního editoru Satty v plovoucím okně doporučujeme přidat do pravidel oken Hyprlandu (`~/.config/hypr/hyprland.conf` nebo Lua modulů):
+To ensure the Satty annotation editor opens as an aesthetic centered floating modal with ambient dimming, add this window rule to your Hyprland configuration (`~/.config/hypr/hyprland.conf` or `rules.lua`):
 
+**In standard `hyprland.conf` format:**
 ```ini
 windowrulev2 = float, class:^(com\.gabm\.satty|satty)$
 windowrulev2 = center, class:^(com\.gabm\.satty|satty)$
@@ -86,5 +168,21 @@ windowrulev2 = pin, class:^(com\.gabm\.satty|satty)$
 windowrulev2 = dimaround, class:^(com\.gabm\.satty|satty)$
 ```
 
-Kompletní Catppuccin konfigurace pro Satty v0.22+ je součástí repozitáře v `config/satty/config.toml` a automaticky se instaluje do `~/.config/satty/config.toml`.
+**In Hyprland Lua modules (`rules.lua`):**
+```lua
+hl.window_rule({
+    match = { class = "^(com\\.gabm\\.satty|satty)$" },
+    float = true,
+    center = true,
+    pin = true,
+    stay_focused = true,
+    dim_around = true,
+})
+```
 
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+Copyright (c) 2026 Richieee.
