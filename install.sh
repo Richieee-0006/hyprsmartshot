@@ -34,12 +34,14 @@ fi
 
 # 2. Make runner executable
 chmod +x "$DIR/bin/hyprsmartshot"
+chmod +x "$DIR/bin/hyprsmartshot-pin"
 chmod +x "$DIR/vision/detect_ui.py"
 chmod +x "$DIR/scripts/pin_window.py"
 
 # 3. Create symlink in ~/.local/bin
 mkdir -p "$BIN_DIR"
 ln -sf "$DIR/bin/hyprsmartshot" "$BIN_DIR/hyprsmartshot"
+ln -sf "$DIR/bin/hyprsmartshot-pin" "$BIN_DIR/hyprsmartshot-pin"
 
 # 4. Satty configuration template
 mkdir -p "$CONFIG_HOME/satty"
@@ -59,6 +61,7 @@ fi
 echo ""
 echo "HyprSmartShot installed successfully!"
 echo "   Binary linked to: $BIN_DIR/hyprsmartshot"
+echo "   Pin window linked to: $BIN_DIR/hyprsmartshot-pin"
 echo ""
 echo "To bind in Hyprland Lua (e.g. ~/.config/hypr/modules/keybinds.lua):"
 echo '  hl.bind("Print", hl.dsp.exec_cmd("hyprsmartshot universal"))'

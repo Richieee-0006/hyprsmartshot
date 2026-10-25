@@ -1,0 +1,353 @@
+#!/usr/bin/env python3
+"""
+HyprSmartShot Native Wayland Pin Window
+Displays a pinned screenshot in a native Wayland XDG toplevel floating window.
+
+Features:
+- Native Wayland app-id: "hyprsmartshot-pin"
+- Frameless, floating, always-on-top window (Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+- Zero temp file accumulation: image loaded into memory, temp file immediately deleted
+- Drag to move: left mouse button invokes Wayland startSystemMove()
+- Zoom: mouse wheel (0.2x - 6.0x), keyboard +, -, 0, or double-click to reset (1.0x)
+- Aspect ratio: strictly preserved during resize and zoom
+- Copy: Ctrl+C or Enter copies in-memory image to clipboard (wl-copy + Qt clipboard)
+- Close: Esc, q, or middle/right click
+- Hyprland integration: windowrulev2 float, pin, keepaspectratio
+"""
+
+import sys
+import os
+import shutil
+import subprocess
+import tempfile
+
+VERSION = "0.0.1"
+
+try:
+    from PySide6.QtCore import Qt, QTimer, QPointF
+    from PySide6.QtGui import QPixmap, QPainter, QAction, QKeySequence, QColor, QKeyEvent, QMouseEvent, QWheelEvent
+    from PySide6.QtWidgets import QApplication, QWidget
+    HAS_PYSIDE6 = True
+except ImportError:
+    HAS_PYSIDE6 = False
+
+
+def fallback_viewer(image_path):
+    """Fallback when PySide6 is not available."""
+    viewers = [
+        ["swayimg", "--app-id=hyprsmartshot-pin", image_path],
+        ["imv", image_path],
+        ["feh", "-.", "-B", "black", image_path],
+        ["xdg-open", image_path]
+    ]
+    for cmd in viewers:
+        if shutil.which(cmd[0]):
+            try:
+                subprocess.Popen(cmd)
+                return 0
+            except Exception:
+                continue
+    return 1
+
+
+def is_temporary_path(path):
+    """Detect whether path represents a temporary or auto-generated screenshot file."""
+    try:
+        norm = os.path.realpath(path)
+        tmp_dir = os.path.realpath(tempfile.gettempdir())
+        if norm.startswith(tmp_dir) or norm.startswith("/tmp") or norm.startswith("/var/tmp"):
+            return True
+        base = os.path.basename(path)
+        if base.startswith("hyprsmartshot"):
+            return True
+    except Exception:
+        pass
+    return False
+
+
+if HAS_PYSIDE6:
+    class PinWindow(QWidget):
+        def __init__(self, path, x=None, y=None, w=None, h=None, should_delete=None):
+            super().__init__()
+            self.image_path = path
+
+            # 1. Load image raw bytes and pixmap into memory
+            with open(path, "rb") as f:
+                self.raw_image_data = f.read()
+            self.image_bytes = self.raw_image_data
+
+            self.orig_pixmap = QPixmap()
+            if not self.orig_pixmap.loadFromData(self.raw_image_data):
+                raise ValueError(f"Failed to load image from: {path}")
+
+            # 2. Zero temp file accumulation: delete disk file immediately upon memory load
+            del_target = False
+            if should_delete is True:
+                del_target = True
+            elif should_delete is False:
+                del_target = False
+            else:
+                del_target = is_temporary_path(path)
+
+            if del_target:
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+
+            self.scale_factor = 1.0
+            self.min_scale = 0.2
+            self.max_scale = 6.0
+            self.drag_start_pos = None
+
+            # Window setup
+            self.setWindowTitle("hyprsmartshot-pin")
+            self.setObjectName("hyprsmartshot-pin")
+            self.setWindowFlags(
+                Qt.WindowType.Window |
+                Qt.WindowType.FramelessWindowHint |
+                Qt.WindowType.WindowStaysOnTopHint
+            )
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+
+            # Determine initial size while preserving aspect ratio
+            img_w = self.orig_pixmap.width()
+            img_h = self.orig_pixmap.height()
+            win_w = w if (w and w > 20) else img_w
+            win_h = h if (h and h > 20) else img_h
+
+            self.resize(win_w, win_h)
+            if x is not None and y is not None:
+                self.move(int(x), int(y))
+
+            # Defensive Hyprland floating and pin verification after window maps
+            QTimer.singleShot(150, self._hyprland_pin)
+
+        def _hyprland_pin(self):
+            """Ensure floating and pinned status in Hyprland if active."""
+            if shutil.which("hyprctl"):
+                try:
+                    out = subprocess.check_output(["hyprctl", "activewindow", "-j"], stderr=subprocess.DEVNULL)
+                    import json
+                    data = json.loads(out)
+                    if data.get("class") == "hyprsmartshot-pin":
+                        if not data.get("floating", False):
+                            subprocess.run(["hyprctl", "dispatch", "setfloating", "active"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        if not data.get("pinned", False):
+                            subprocess.run(["hyprctl", "dispatch", "pin", "active"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+
+        def paintEvent(self, event):
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, True)
+
+            # Dark background fill
+            painter.fillRect(self.rect(), QColor(20, 20, 25))
+
+            # Scaled image keeping aspect ratio
+            scaled = self.orig_pixmap.scaled(
+                self.size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation
+            )
+            ox = (self.width() - scaled.width()) // 2
+            oy = (self.height() - scaled.height()) // 2
+            painter.drawPixmap(ox, oy, scaled)
+
+            # Subtle border around pinned window
+            painter.setPen(QColor(100, 150, 255, 160))
+            painter.drawRect(0, 0, self.width() - 1, self.height() - 1)
+
+        def mousePressEvent(self, event):
+            if event.button() == Qt.MouseButton.LeftButton:
+                # Direct Wayland system move delegation to compositor
+                wh = self.windowHandle()
+                if wh and hasattr(wh, "startSystemMove") and wh.startSystemMove():
+                    event.accept()
+                    return
+                # Fallback manual drag for non-Wayland environments
+                self.drag_start_pos = event.globalPosition().toPoint() - self.pos()
+                event.accept()
+            elif event.button() in (Qt.MouseButton.RightButton, Qt.MouseButton.MiddleButton):
+                self.close()
+                event.accept()
+
+        def mouseMoveEvent(self, event):
+            if self.drag_start_pos and (event.buttons() & Qt.MouseButton.LeftButton):
+                self.move(event.globalPosition().toPoint() - self.drag_start_pos)
+                event.accept()
+
+        def mouseReleaseEvent(self, event):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.drag_start_pos = None
+
+        def mouseDoubleClickEvent(self, event):
+            if event.button() == Qt.MouseButton.LeftButton:
+                self.reset_zoom()
+                event.accept()
+
+        def set_zoom(self, new_scale, anchor_pos=None):
+            """Scale window smoothly preserving image aspect ratio."""
+            new_scale = max(self.min_scale, min(self.max_scale, new_scale))
+            if abs(new_scale - self.scale_factor) < 1e-4:
+                return
+
+            old_w = self.width()
+            old_h = self.height()
+            old_pos = self.pos()
+
+            self.scale_factor = new_scale
+            new_w = max(40, int(round(self.orig_pixmap.width() * self.scale_factor)))
+            new_h = max(30, int(round(self.orig_pixmap.height() * self.scale_factor)))
+
+            if anchor_pos is not None:
+                rx = anchor_pos.x() / max(1, old_w)
+                ry = anchor_pos.y() / max(1, old_h)
+                dw = new_w - old_w
+                dh = new_h - old_h
+                new_x = int(old_pos.x() - dw * rx)
+                new_y = int(old_pos.y() - dh * ry)
+            else:
+                dw = new_w - old_w
+                dh = new_h - old_h
+                new_x = int(old_pos.x() - dw * 0.5)
+                new_y = int(old_pos.y() - dh * 0.5)
+
+            self.resize(new_w, new_h)
+            self.move(new_x, new_y)
+            self.update()
+
+        def reset_zoom(self):
+            """Reset zoom factor to 1.0x (native screenshot dimensions)."""
+            self.set_zoom(1.0)
+
+        def wheelEvent(self, event):
+            delta = event.angleDelta().y()
+            if delta == 0:
+                return
+
+            zoom_step = 1.15 if delta > 0 else (1.0 / 1.15)
+            self.set_zoom(self.scale_factor * zoom_step, event.position())
+            event.accept()
+
+        def keyPressEvent(self, event):
+            if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q) or event.text().lower() == "q":
+                self.close()
+                event.accept()
+            elif event.matches(QKeySequence.StandardKey.Copy) or event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.copy_to_clipboard()
+                event.accept()
+            elif event.key() in (Qt.Key.Key_Plus, Qt.Key.Key_Equal) or event.text() in ("+", "="):
+                self.set_zoom(self.scale_factor * 1.15)
+                event.accept()
+            elif event.key() in (Qt.Key.Key_Minus, Qt.Key.Key_Underscore) or event.text() in ("-", "_"):
+                self.set_zoom(self.scale_factor / 1.15)
+                event.accept()
+            elif event.key() == Qt.Key.Key_0 or event.text() == "0":
+                self.reset_zoom()
+                event.accept()
+            else:
+                super().keyPressEvent(event)
+
+        def copy_to_clipboard(self):
+            """Copy image to clipboard from memory (wl-copy + Qt clipboard)."""
+            copied = False
+            raw_bytes = getattr(self, "image_bytes", None) or getattr(self, "raw_image_data", None)
+
+            if shutil.which("wl-copy") and raw_bytes:
+                try:
+                    subprocess.run(
+                        ["wl-copy", "--type", "image/png"],
+                        input=raw_bytes,
+                        check=True
+                    )
+                    copied = True
+                except Exception:
+                    pass
+
+            cb = QApplication.clipboard()
+            if cb and not self.orig_pixmap.isNull():
+                cb.setPixmap(self.orig_pixmap)
+                copied = True
+
+            if copied and shutil.which("notify-send"):
+                try:
+                    subprocess.run([
+                        "notify-send",
+                        "-a", "HyprSmartShot",
+                        "HyprSmartShot",
+                        "Screenshot copied to clipboard"
+                    ], check=False)
+                except Exception:
+                    pass
+else:
+    class PinWindow:
+        pass
+
+
+def run_pyside6_viewer(image_path, init_x=None, init_y=None, init_w=None, init_h=None, delete_file=None):
+    if not HAS_PYSIDE6:
+        raise ImportError("PySide6 is not available")
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    app.setApplicationName("hyprsmartshot-pin")
+    app.setDesktopFileName("hyprsmartshot-pin")
+
+    pin_win = PinWindow(image_path, init_x, init_y, init_w, init_h, delete_file)
+    pin_win.show()
+    return app.exec()
+
+
+def main(prog_name=None):
+    prog = prog_name or os.path.basename(sys.argv[0])
+
+    delete_file = None
+    clean_args = []
+    for arg in sys.argv[1:]:
+        if arg in ("-h", "--help", "help"):
+            print(f"Usage: {prog} <image_path> [x] [y] [width] [height]", file=sys.stdout)
+            print("", file=sys.stdout)
+            print("Options:", file=sys.stdout)
+            print("  --delete, --rm       Delete image file after loading into memory", file=sys.stdout)
+            print("  --keep, --no-delete  Preserve image file on disk", file=sys.stdout)
+            print("  -h, --help           Display this help message", file=sys.stdout)
+            print("  -v, --version        Display version information", file=sys.stdout)
+            return 0
+        elif arg in ("-v", "--version", "version"):
+            print(f"{prog} v{VERSION}", file=sys.stdout)
+            return 0
+        elif arg in ("--delete", "--rm"):
+            delete_file = True
+        elif arg in ("--keep", "--no-delete"):
+            delete_file = False
+        else:
+            clean_args.append(arg)
+
+    if len(clean_args) < 1:
+        print(f"Usage: {prog} <image_path> [x] [y] [width] [height]", file=sys.stderr)
+        return 1
+
+    image_path = os.path.abspath(clean_args[0])
+    if not os.path.isfile(image_path):
+        print(f"Error: Image not found: {image_path}", file=sys.stderr)
+        return 1
+
+    x = int(float(clean_args[1])) if len(clean_args) > 1 else None
+    y = int(float(clean_args[2])) if len(clean_args) > 2 else None
+    w = int(float(clean_args[3])) if len(clean_args) > 3 else None
+    h = int(float(clean_args[4])) if len(clean_args) > 4 else None
+
+    if HAS_PYSIDE6:
+        try:
+            return run_pyside6_viewer(image_path, x, y, w, h, delete_file)
+        except Exception as e:
+            print(f"PySide6 viewer error: {e}", file=sys.stderr)
+            return fallback_viewer(image_path)
+    else:
+        return fallback_viewer(image_path)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

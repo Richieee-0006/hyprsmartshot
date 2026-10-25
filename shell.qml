@@ -116,7 +116,7 @@ Scope {
             const crop = cropCommand(x, y, width, height, tempCrop);
             const title = I18n.t("pinTitle");
             const desc = I18n.t("pinDesc");
-            const pinCmd = `hyprsmartshot pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}`;
+            const pinCmd = `if command -v hyprsmartshot-pin >/dev/null 2>&1; then hyprsmartshot-pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; elif [ -n "$SMARTSHOT_DIR" ] && [ -x "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ]; then "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; else hyprsmartshot pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; fi`;
             const cmd = `${crop} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && (${pinCmd}; rm -f ${shellEscape(tempCrop)}) &`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);

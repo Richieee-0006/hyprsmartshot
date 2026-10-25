@@ -62,7 +62,10 @@ if [ "$1" = "pin" ]; then
         echo "Usage: hyprsmartshot pin <image_path> [x] [y] [width] [height]" >&2
         exit 1
     fi
-    PIN_SCRIPT="$DIR/scripts/pin_window.py"
+    PIN_SCRIPT="$DIR/bin/hyprsmartshot-pin"
+    if [ ! -f "$PIN_SCRIPT" ]; then
+        PIN_SCRIPT="$DIR/scripts/pin_window.py"
+    fi
     if [ ! -f "$PIN_SCRIPT" ]; then
         echo "Error: Pin script not found at $PIN_SCRIPT" >&2
         exit 1
