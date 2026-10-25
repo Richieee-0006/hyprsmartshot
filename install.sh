@@ -48,7 +48,7 @@ if [ ! -f "$CONFIG_DIR/config.json" ] && [ ! -f "$CONFIG_DIR/config.toml" ]; the
 fi
 
 echo ""
-echo "✨ HyprSmartShot installed successfully!"
+echo "HyprSmartShot installed successfully!"
 echo "   Binary linked to: $BIN_DIR/hyprsmartshot"
 echo ""
 echo "To bind in Hyprland Lua (e.g. ~/.config/hypr/modules/keybinds.lua):"
