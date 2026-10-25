@@ -42,5 +42,4 @@ echo ""
 echo "To bind in Hyprland Lua (e.g. ~/.config/hypr/modules/keybinds.lua):"
 echo '  hl.bind("Print", hl.dsp.exec_cmd("hyprsmartshot universal"))'
 echo '  hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprsmartshot screen"))'
-echo '  hl.bind("CTRL + Print", hl.dsp.exec_cmd("hyprsmartshot window"))'
 echo ""

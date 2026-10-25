@@ -6,7 +6,7 @@ import Quickshell.Io
 Item {
     id: root
 
-    property string mode: "universal" // "universal", "window", "region", "screen"
+    property string mode: "universal" // "universal", "screen"
     property var detectedBoxes: []
     property var cachedHyprClients: []
     readonly property real monitorScale: {

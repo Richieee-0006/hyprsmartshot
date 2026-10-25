@@ -183,7 +183,7 @@ Scope {
                 anchors.centerIn: parent
                 text: selector.isConfirmed
                     ? "󰆏 [Enter] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  󰒉 [Šipky] Doladit  •  [Alt+Šipky] Velikost  •  [Esc] Zrušit"
-                    : "󰓥 [Klik] Potvrdit výběr  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko] Hloubka / Grid  •  󰍉 [Alt] Lupa  •  [1-4] Režimy  •  [Esc] Zavřít"
+                    : "󰓥 [Klik] Potvrdit výběr  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko] Hloubka / Grid  •  󰍉 [Alt] Lupa  •  [1-2] Režimy  •  [Esc] Zavřít"
                 font.family: Theme.fontFamily
                 font.pixelSize: 11
                 color: Theme.textSubtle
@@ -296,12 +296,10 @@ Scope {
                     }
                 }
 
-                // Modes 1..3
+                // Modes 1..2
                 if (event.key === Qt.Key_1) {
                     root.mode = "universal"; selector.mode = "universal";
                 } else if (event.key === Qt.Key_2) {
-                    root.mode = "window"; selector.mode = "window";
-                } else if (event.key === Qt.Key_3) {
                     root.mode = "screen"; selector.mode = "screen";
                 }
             }

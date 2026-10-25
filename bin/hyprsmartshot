@@ -10,6 +10,16 @@ BOXES_JSON="/tmp/hyprsmartshot_boxes.json"
 CLIENTS_JSON="/tmp/hyprsmartshot_clients.json"
 VENV_PYTHON="$DIR/.venv/bin/python"
 CV_SCRIPT="$DIR/vision/detect_ui.py"
+CLEANUP_PID_FILE="/tmp/hyprsmartshot_cleanup.pid"
+
+# Kill any lingering background cleanup from previous runs to prevent deleting the new freeze image
+if [ -f "$CLEANUP_PID_FILE" ]; then
+    OLD_CLEANUP_PID=$(cat "$CLEANUP_PID_FILE" 2>/dev/null || true)
+    if [ -n "$OLD_CLEANUP_PID" ]; then
+        kill "$OLD_CLEANUP_PID" 2>/dev/null || true
+    fi
+    rm -f "$CLEANUP_PID_FILE" 2>/dev/null || true
+fi
 
 # Clean up stale files from previous runs and terminate any lingering hyprsmartshot overlay
 quickshell kill -p "$DIR" >/dev/null 2>&1 || true
@@ -21,7 +31,8 @@ echo '{"boxes":[]}' > "$BOXES_JSON"
 cleanup() {
     quickshell kill -p "$DIR" >/dev/null 2>&1 || true
     pkill -f "quickshell -p $DIR" >/dev/null 2>&1 || true
-    ( sleep 8 && rm -f "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png 2>/dev/null ) &
+    ( sleep 8 && rm -f "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" /tmp/hyprsmartshot_crop_*.png /tmp/hyprsmartshot_ocr_*.png /tmp/hyprsmartshot_annot_*.png "$CLEANUP_PID_FILE" 2>/dev/null ) &
+    echo $! > "$CLEANUP_PID_FILE" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -70,10 +81,15 @@ if [ "$MODE" = "full" ]; then
     exit 0
 fi
 
-# 1. Instant screen freeze (focused monitor or all)
+# 1. Instant screen freeze (fast level 1 PNG compression)
 if [ -n "$MONITOR_NAME" ]; then
-    grim -o "$MONITOR_NAME" "$FREEZE_IMG"
+    grim -l 1 -o "$MONITOR_NAME" "$FREEZE_IMG" 2>/dev/null || grim -l 1 "$FREEZE_IMG"
 else
+    grim -l 1 "$FREEZE_IMG"
+fi
+
+# Ensure freeze image exists and is non-empty
+if [ ! -s "$FREEZE_IMG" ]; then
     grim "$FREEZE_IMG"
 fi
 
@@ -84,11 +100,10 @@ hyprctl clients -j > "$CLIENTS_JSON" 2>/dev/null || echo "[]" > "$CLIENTS_JSON"
 "$VENV_PYTHON" "$CV_SCRIPT" "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" &
 CV_PID=$!
 
-# 3. Export mode to Quickshell
+# 3. Export mode to Quickshell (universal is all-in-one Smart mode)
 case "$MODE" in
-    window) export SMARTSHOT_MODE="window" ;;
-    screen) export SMARTSHOT_MODE="screen" ;;
-    *)      export SMARTSHOT_MODE="universal" ;;
+    screen|full) export SMARTSHOT_MODE="screen" ;;
+    *)           export SMARTSHOT_MODE="universal" ;;
 esac
 
 # 4. Wait briefly for CV to finish (takes ~30-60ms, bounded to 100ms max so overlay never hangs)

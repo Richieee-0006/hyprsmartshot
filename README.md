@@ -30,8 +30,7 @@ An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprl
 
 | Mode | Command | Description |
 | :--- | :--- | :--- |
-| **Universal (Default)** | `hyprsmartshot universal` | Smart detection combining Computer Vision UI analysis, Hyprland window boundaries, and freehand magnetic selection. |
-| **Window Only** | `hyprsmartshot window` | Fast native snapping to Hyprland window boundaries (respects workspace filtering and floating z-order). |
+| **Smart / Universal (Default)** | `hyprsmartshot universal` | All-in-one detection combining Computer Vision UI analysis, Hyprland window boundaries, and freehand magnetic selection. |
 | **Full Screen** | `hyprsmartshot screen` | Instant capture of the entire focused monitor. |
 
 ---
@@ -49,7 +48,7 @@ An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprl
 | **O** | Run OCR on selected region and copy recognized text to clipboard |
 | **Alt** | Toggle pixel-level inspection magnifier |
 | **Esc / Right Click** | Unlock confirmed selection / Cancel and close overlay |
-| **1 / 2 / 3** | Switch active mode on the fly (`Universal` / `Window` / `Screen`) |
+| **1 / 2** | Switch active mode on the fly (`Smart` / `Screen`) |
 
 ---
 
@@ -124,7 +123,6 @@ Hyprland natively uses Lua scripting. Add the keybindings and window rules to yo
 -- HyprSmartShot Keybindings
 hl.bind("Print", hl.dsp.exec_cmd("hyprsmartshot universal"))
 hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprsmartshot screen"))
-hl.bind("CTRL + Print", hl.dsp.exec_cmd("hyprsmartshot window"))
 ```
 
 #### Satty Floating Window Rule (`modules/rules.lua`)
@@ -146,8 +144,7 @@ hl.window_rule({
 ```ini
 # Keybindings
 bind = , Print, exec, hyprsmartshot universal
-bind = SHIFT, Print, exec, hyprsmartshot full
-bind = CTRL, Print, exec, hyprsmartshot window
+bind = SHIFT, Print, exec, hyprsmartshot screen
 
 # Window rules
 windowrulev2 = float, class:^(com\.gabm\.satty|satty)$

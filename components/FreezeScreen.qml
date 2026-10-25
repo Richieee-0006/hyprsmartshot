@@ -45,13 +45,21 @@ PanelWindow {
         cache: false
         z: -2
 
-        // If file is not yet ready, use ScreencopyView as live fallback
-        ScreencopyView {
-            anchors.fill: parent
-            captureSource: root.targetScreen
-            live: freezeImg.status !== Image.Ready
-            visible: live
-            z: -1
+        onStatusChanged: {
+            if (status === Image.Error) {
+                console.warn("[HyprSmartShot] freezeImg load error, retrying in 30ms...");
+                retryTimer.start();
+            }
+        }
+
+        Timer {
+            id: retryTimer
+            interval: 30
+            repeat: false
+            onTriggered: {
+                freezeImg.source = "";
+                freezeImg.source = "file://" + root.freezeImagePath;
+            }
         }
     }
 }
