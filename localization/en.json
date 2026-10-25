@@ -4,12 +4,13 @@
 
   "copy": "Copy",
   "save": "Save",
+  "pin": "Pin",
   "annotate": "Annotate",
   "ocr": "OCR",
   "cancel": "Cancel",
   "close": "Close",
 
-  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Copy  •  󰆓 [Ctrl+S] Save  •  󰏫 [A] Annotate  •  󰉐 [O] OCR  •  󰒉 [Arrows] Fine-tune  •  [Alt+Arrows] Resize  •  [Esc] Cancel",
+  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Copy  •  󰆓 [Ctrl+S] Save  •  󰐃 [P] Pin  •  󰏫 [A] Annotate  •  󰉐 [O] OCR  •  󰒉 [Arrows] Fine-tune  •  [Alt+Arrows] Resize  •  [Esc] Cancel",
   "hintUnconfirmed": "󰓥 [Click] Confirm  •  [Drag] Custom region  •  󰒉 [Scroll] Depth / Grid  •  󰍉 [Alt] Magnifier  •  [1-2] Modes  •  [Esc] Close",
 
   "tagGrid": "Grid 󰕰 • ",
@@ -27,6 +28,8 @@
   "copyDesc": "Selection copied to clipboard",
   "saveTitle": "Screenshot Saved",
   "saveDesc": "Saved to {path} and copied to clipboard",
+  "pinTitle": "Screenshot Pinned",
+  "pinDesc": "Selection pinned to screen",
   "fullscreenTitle": "Fullscreen Captured",
   "fullscreenDesc": "Saved to {path} and copied to clipboard",
   "annotateNotFoundTitle": "Annotation Editor Not Found",

@@ -8,6 +8,7 @@ Rectangle {
 
     signal copyRequested()
     signal saveRequested()
+    signal pinRequested()
     signal annotateRequested()
     signal ocrRequested()
     signal cancelRequested()
@@ -147,6 +148,42 @@ Rectangle {
                 }
                 Text {
                     text: I18n.t("save")
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 12
+                    color: Theme.text
+                }
+            }
+        }
+
+        // Pin button [P]
+        Rectangle {
+            height: 28
+            width: pinRow.implicitWidth + 16
+            radius: 14
+            color: pinMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.08)
+            anchors.verticalCenter: parent.verticalCenter
+
+            MouseArea {
+                id: pinMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.pinRequested()
+            }
+
+            Row {
+                id: pinRow
+                anchors.centerIn: parent
+                spacing: 5
+
+                Text {
+                    text: "󰐃"
+                    font.family: Theme.fontFamily
+                    font.pixelSize: 13
+                    color: Theme.text
+                }
+                Text {
+                    text: I18n.t("pin")
                     font.family: Theme.fontFamily
                     font.pixelSize: 12
                     color: Theme.text

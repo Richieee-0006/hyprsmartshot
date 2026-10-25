@@ -21,7 +21,7 @@ echo "==> Setting up HyprSmartShot in $DIR..."
 mkdir -p "$DIR/vision"
 if [ ! -d "$DIR/.venv" ]; then
     echo "==> Creating Python virtual environment..."
-    python3 -m venv "$DIR/.venv"
+    python3 -m venv --system-site-packages "$DIR/.venv"
 fi
 
 echo "==> Installing Python dependencies (OpenCV, NumPy)..."
@@ -35,6 +35,7 @@ fi
 # 2. Make runner executable
 chmod +x "$DIR/bin/hyprsmartshot"
 chmod +x "$DIR/vision/detect_ui.py"
+chmod +x "$DIR/scripts/pin_window.py"
 
 # 3. Create symlink in ~/.local/bin
 mkdir -p "$BIN_DIR"

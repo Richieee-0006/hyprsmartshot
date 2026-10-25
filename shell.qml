@@ -99,6 +99,23 @@ Scope {
         }
     }
 
+    function doPin(x, y, width, height) {
+        try {
+            const tempCrop = `/tmp/hyprsmartshot_pin_${Date.now()}.png`;
+            const crop = cropCommand(x, y, width, height, tempCrop);
+            const title = I18n.t("pinTitle");
+            const desc = I18n.t("pinDesc");
+            const pinCmd = `hyprsmartshot pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}`;
+            const cmd = `${crop} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && (${pinCmd}; rm -f ${shellEscape(tempCrop)}) &`;
+            playShutterSound();
+            Quickshell.execDetached(["sh", "-c", cmd]);
+        } catch (e) {
+            console.error("[HyprSmartShot] Error in doPin:", e);
+        } finally {
+            root.closeOverlay();
+        }
+    }
+
     function doAnnotate(x, y, width, height) {
         try {
             const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
@@ -184,6 +201,7 @@ Scope {
 
             onCopyAction: (x, y, w, h) => root.doCopy(x, y, w, h)
             onSaveAction: (x, y, w, h) => root.doSave(x, y, w, h)
+            onPinAction: (x, y, w, h) => root.doPin(x, y, w, h)
             onAnnotateAction: (x, y, w, h) => root.doAnnotate(x, y, w, h)
             onOcrAction: (x, y, w, h) => root.doOcr(x, y, w, h)
             onCancelRequested: root.closeOverlay()
@@ -288,6 +306,15 @@ Scope {
                 if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_S) || (selector.isConfirmed && event.key === Qt.Key_S)) {
                     if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
                         root.doSave(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
+                    }
+                    event.accepted = true;
+                    return;
+                }
+
+                // P: Pin
+                if (event.key === Qt.Key_P) {
+                    if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
+                        root.doPin(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
                     }
                     event.accepted = true;
                     return;

@@ -25,6 +25,7 @@ Commands:
   universal       Smart UI detection and interactive overlay (default)
   screen          Fullscreen interactive overlay
   full            Instant fullscreen capture without opening overlay
+  pin             Display image in a pinned, floating native Wayland window
 
 Options:
   -h, --help      Display this help message
@@ -50,6 +51,30 @@ for arg in "$@"; do
     esac
 done
 
+# Dedicated pin mode: displays an existing image in a floating pinned Wayland window
+if [ "$1" = "pin" ]; then
+    shift
+    if [ $# -lt 1 ]; then
+        echo "Error: Missing image path for 'pin'" >&2
+        echo "Usage: hyprsmartshot pin <image_path> [x] [y] [width] [height]" >&2
+        exit 1
+    fi
+    PIN_SCRIPT="$DIR/scripts/pin_window.py"
+    if [ ! -f "$PIN_SCRIPT" ]; then
+        echo "Error: Pin script not found at $PIN_SCRIPT" >&2
+        exit 1
+    fi
+    PIN_PYTHON="python3"
+    if [ -x "$DIR/.venv/bin/python" ] && "$DIR/.venv/bin/python" -c "import PySide6" 2>/dev/null; then
+        PIN_PYTHON="$DIR/.venv/bin/python"
+    elif command -v python3 >/dev/null 2>&1; then
+        PIN_PYTHON="python3"
+    elif [ -x "$DIR/.venv/bin/python" ]; then
+        PIN_PYTHON="$DIR/.venv/bin/python"
+    fi
+    exec "$PIN_PYTHON" "$PIN_SCRIPT" "$@"
+fi
+
 if [ $# -gt 1 ]; then
     echo "Error: Unexpected argument '$2'" >&2
     echo "Run 'hyprsmartshot --help' for usage." >&2
@@ -68,7 +93,7 @@ case "$MODE" in
         ;;
     *)
         echo "Error: Unknown command '$MODE'" >&2
-        echo "Valid commands: universal, screen, full" >&2
+        echo "Valid commands: universal, screen, full, pin" >&2
         echo "Run 'hyprsmartshot --help' for usage." >&2
         exit 1
         ;;

@@ -4,12 +4,13 @@
 
   "copy": "Kopírovat",
   "save": "Uložit",
+  "pin": "Připnout",
   "annotate": "Anotovat",
   "ocr": "OCR",
   "cancel": "Zrušit",
   "close": "Zavřít",
 
-  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  󰒉 [Šipky] Doladit  •  [Alt+Šipky] Velikost  •  [Esc] Zrušit",
+  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰐃 [P] Připnout  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  󰒉 [Šipky] Doladit  •  [Alt+Šipky] Velikost  •  [Esc] Zrušit",
   "hintUnconfirmed": "󰓥 [Klik] Potvrdit výběr  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko] Hloubka / Grid  •  󰍉 [Alt] Lupa  •  [1-2] Režimy  •  [Esc] Zavřít",
 
   "tagGrid": "Grid 󰕰 • ",
@@ -27,6 +28,8 @@
   "copyDesc": "Výřez byl zkopírován do schránky",
   "saveTitle": "Screenshot uložen",
   "saveDesc": "Uloženo do {path} a zkopírováno",
+  "pinTitle": "Snímek připnut",
+  "pinDesc": "Výřez připnut na obrazovku",
   "fullscreenTitle": "Fullscreen zachycen",
   "fullscreenDesc": "Uloženo do {path} a zkopírováno",
   "annotateNotFoundTitle": "Anotační editor nenalezen",

@@ -65,6 +65,7 @@ Item {
     signal selectionConfirmed(real x, real y, real width, real height)
     signal copyAction(real x, real y, real width, real height)
     signal saveAction(real x, real y, real width, real height)
+    signal pinAction(real x, real y, real width, real height)
     signal annotateAction(real x, real y, real width, real height)
     signal ocrAction(real x, real y, real width, real height)
     signal cancelRequested()
@@ -466,6 +467,7 @@ Item {
 
         onCopyRequested: root.copyAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onSaveRequested: root.saveAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
+        onPinRequested: root.pinAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onAnnotateRequested: root.annotateAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onOcrRequested: root.ocrAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onCancelRequested: root.clearConfirmation()

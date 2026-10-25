@@ -35,6 +35,7 @@ An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprl
 | **Smart / Universal (Default)** | `hyprsmartshot universal` | All-in-one detection combining Computer Vision UI analysis, Hyprland window boundaries, and freehand magnetic selection. |
 | **Full Screen** | `hyprsmartshot screen` | Interactive screenshot overlay covering the entire focused monitor. |
 | **Fast Fullscreen** | `hyprsmartshot full` | Instant non-interactive capture of the focused monitor directly to disk and clipboard. |
+| **Pin to Screen** | `hyprsmartshot pin <image> [x] [y] [w] [h]` | Display image in a floating, pinned native Wayland window. |
 
 ---
 
@@ -48,6 +49,8 @@ An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprl
 | **Left Click** | **Confirmation Mode**: Locks selection and displays action bar under cursor |
 | **Enter / Double Click** | Copy selection to clipboard (`wl-copy`) and close overlay |
 | **Ctrl + S** | Save image to `~/Pictures/Screenshots/` and copy to clipboard |
+| **P** | **Pin to Screen**: Open selection in a floating, draggable, zoomable native Wayland window |
+| **A / E** | Open selection in annotation editor (Satty) |
 | **O** | Run OCR on selected region and copy recognized text to clipboard |
 | **Alt** | Toggle pixel-level inspection magnifier |
 | **Esc / Right Click** | Unlock confirmed selection / Cancel and close overlay |
@@ -64,6 +67,7 @@ HyprSmartShot is licensed under the permissive **[MIT License](LICENSE)**. Below
 | **[QuickShell](https://quickshell.org)** | Wayland QML shell host | **LGPL-3.0** | **Fully Compatible**: HyprSmartShot scripts and QML are independent client code executed by the standalone `quickshell` runtime without modifying the QuickShell library itself. |
 | **[OpenCV (Python)](https://opencv.org)** | Computer Vision contour engine | **Apache-2.0** | **Fully Compatible**: Apache 2.0 is a permissive license that explicitly permits sublicensing and integration into MIT-licensed projects. |
 | **[NumPy](https://numpy.org)** | Matrix & array calculations | **BSD-3-Clause** | **Fully Compatible**: BSD-3-Clause permits incorporation into MIT projects provided copyright notices are preserved. |
+| **[PySide6 (Qt6)](https://wiki.qt.io/Qt_for_Python)** | Native Wayland Pin Window viewer | **LGPL-3.0** | **Fully Compatible**: Invoked as dynamic runtime library; falls back to native viewers (`swayimg`, `imv`, `feh`) if not installed. |
 | **[grim](https://gitlab.freedesktop.org/emersion/grim)** | Screen capture utility | **MIT** | **Fully Compatible**: Identical license terms. |
 | **[slurp](https://github.com/emersion/slurp)** | Screen region selector | **MIT** | **Fully Compatible**: Identical license terms. |
 | **[Satty](https://github.com/gabm/Satty)** | Screenshot annotation editor | **MPL-2.0** | **Fully Compatible**: Satty is executed as an external standalone CLI tool via process isolation (`sh -c`). Weak copyleft (MPL) does not apply to calling scripts. |
@@ -94,7 +98,8 @@ sudo pacman -S --needed \
     tesseract-data-ces \
     wl-clipboard \
     libnotify \
-    python
+    python \
+    python-pyside6
 ```
 
 ### 2. Clone & Run Automated Setup
@@ -203,9 +208,10 @@ hl.bind("Print", hl.dsp.exec_cmd("hyprsmartshot universal"))
 hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprsmartshot screen"))
 ```
 
-#### Satty Floating Window Rule (`modules/rules.lua`)
-To ensure the Satty annotation editor opens as an aesthetic centered floating modal with ambient dimming:
+#### Satty & Pinned Window Rules (`modules/rules.lua`)
+To ensure the Satty annotation editor and native Pinned Screenshot windows open as floating modals:
 ```lua
+-- Satty Annotation Editor
 hl.window_rule({
     match = { class = "^(com\\.gabm\\.satty|satty)$" },
     float = true,
@@ -213,6 +219,14 @@ hl.window_rule({
     pin = true,
     stay_focused = true,
     dim_around = true,
+})
+
+-- HyprSmartShot Native Pinned Window (Always-on-top, draggable, zoomable)
+hl.window_rule({
+    match = { class = "^(hyprsmartshot-pin)$" },
+    float = true,
+    pin = true,
+    keep_aspect_ratio = true,
 })
 ```
 
@@ -229,6 +243,11 @@ windowrulev2 = float, class:^(com\.gabm\.satty|satty)$
 windowrulev2 = center, class:^(com\.gabm\.satty|satty)$
 windowrulev2 = pin, class:^(com\.gabm\.satty|satty)$
 windowrulev2 = dimaround, class:^(com\.gabm\.satty|satty)$
+
+# HyprSmartShot Pin Window
+windowrulev2 = float, class:^(hyprsmartshot-pin)$
+windowrulev2 = pin, class:^(hyprsmartshot-pin)$
+windowrulev2 = keepaspectratio, class:^(hyprsmartshot-pin)$
 ```
 </details>
 

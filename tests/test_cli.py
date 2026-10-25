@@ -20,6 +20,7 @@ class TestCLIArguments(unittest.TestCase):
         self.assertIn("universal", proc.stdout)
         self.assertIn("screen", proc.stdout)
         self.assertIn("full", proc.stdout)
+        self.assertIn("pin", proc.stdout)
 
     def test_help_flag_short(self):
         proc = subprocess.run([RUNNER_BIN, "-h"], capture_output=True, text=True)
@@ -58,7 +59,18 @@ class TestCLIArguments(unittest.TestCase):
         proc = subprocess.run([RUNNER_BIN, "invalid_action"], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 1)
         self.assertIn("Error: Unknown command 'invalid_action'", proc.stderr)
-        self.assertIn("Valid commands: universal, screen, full", proc.stderr)
+        self.assertIn("Valid commands: universal, screen, full, pin", proc.stderr)
+
+    def test_pin_missing_argument(self):
+        proc = subprocess.run([RUNNER_BIN, "pin"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("Error: Missing image path for 'pin'", proc.stderr)
+        self.assertIn("Usage: hyprsmartshot pin", proc.stderr)
+
+    def test_pin_nonexistent_image(self):
+        proc = subprocess.run([RUNNER_BIN, "pin", "/tmp/nonexistent_image_12345.png"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("Error: Image not found:", proc.stderr)
 
     def test_unexpected_extra_arguments(self):
         proc = subprocess.run([RUNNER_BIN, "universal", "extra_argument"], capture_output=True, text=True)
@@ -131,6 +143,18 @@ class TestCLIArguments(unittest.TestCase):
     def test_runner_script_syntax(self):
         proc = subprocess.run(["bash", "-n", RUNNER_BIN], capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_pin_script_usage(self):
+        pin_script = os.path.join(REPO_DIR, "scripts", "pin_window.py")
+        proc = subprocess.run(["python3", pin_script], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("Usage: pin_window.py", proc.stderr)
+
+    def test_pin_script_missing_file(self):
+        pin_script = os.path.join(REPO_DIR, "scripts", "pin_window.py")
+        proc = subprocess.run(["python3", pin_script, "/nonexistent/test.png"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn("Error: Image not found:", proc.stderr)
 
 if __name__ == "__main__":
     unittest.main()
