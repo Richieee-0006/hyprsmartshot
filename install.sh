@@ -18,7 +18,11 @@ fi
 
 echo "==> Installing Python dependencies (OpenCV, NumPy)..."
 "$DIR/.venv/bin/pip" install --upgrade pip >/dev/null
-"$DIR/.venv/bin/pip" install opencv-python-headless numpy >/dev/null
+if [ -f "$DIR/requirements.txt" ]; then
+    "$DIR/.venv/bin/pip" install -r "$DIR/requirements.txt" >/dev/null
+else
+    "$DIR/.venv/bin/pip" install opencv-python-headless numpy >/dev/null
+fi
 
 # 2. Make runner executable
 chmod +x "$DIR/bin/hyprsmartshot"
