@@ -604,5 +604,37 @@ class TestUIDetector(unittest.TestCase):
         input_candidates = [b for b in res["boxes"] if b.get("type") == "input" or (b["w"] >= 400 and 30 <= b["h"] <= 45)]
         self.assertGreaterEqual(len(input_candidates), 1, "Expected input field to be detected")
 
+    def test_discord_multi_column_and_panels_detection(self):
+        img = np.zeros((800, 1200, 3), dtype=np.uint8)
+        # Server sidebar: 0..72
+        img[:, :72] = (34, 31, 30)
+        # Channel sidebar: 72..312
+        img[:, 72:312] = (49, 45, 43)
+        # Main chat area: 312..960
+        img[:, 312:960] = (56, 51, 49)
+        # Member list: 960..1200
+        img[:, 960:] = (49, 45, 43)
+        # Input bar at bottom of chat: 330..930, y=720..764
+        cv2.rectangle(img, (330, 720), (930, 764), (64, 58, 56), -1)
+        # Top header line: y=48
+        cv2.line(img, (72, 48), (1200, 48), (35, 33, 30), 1)
+
+        path = self._save_img("discord_mock.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "discord_clients.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([{"at": [0, 0], "size": [1200, 800], "title": "Discord", "class": "discord"}], f)
+
+        res = detect_ui_elements(path, clients_path=clients_json)
+        boxes = res["boxes"]
+
+        # Verify sidebars and columns are detected inside Discord
+        server_col = [b for b in boxes if b["x"] == 0 and abs(b["w"] - 72) <= 8]
+        self.assertGreaterEqual(len(server_col), 1, "Server sidebar (72px) should be detected")
+        channel_col = [b for b in boxes if abs(b["x"] - 72) <= 8 and abs(b["w"] - 240) <= 16]
+        self.assertGreaterEqual(len(channel_col), 1, "Channels sidebar (240px) should be detected")
+        chat_pane = [b for b in boxes if abs(b["x"] - 312) <= 8 and abs(b["w"] - 648) <= 16]
+        self.assertGreaterEqual(len(chat_pane), 1, "Main chat pane (648px) should be detected")
+
 if __name__ == "__main__":
     unittest.main()

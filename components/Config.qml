@@ -32,6 +32,9 @@ Singleton {
         "chromium": "browser",
         "brave-browser": "browser",
         "zen-browser": "browser",
+        "discord": "browser",
+        "vesktop": "browser",
+        "webcord": "browser",
         "kitty": "terminal",
         "alacritty": "terminal",
         "foot": "terminal"

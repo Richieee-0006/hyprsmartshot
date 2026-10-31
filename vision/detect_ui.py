@@ -304,7 +304,7 @@ def cluster_adjacent_columns(boxes):
     Detects adjacent columns or split panels (e.g. left and right halves of a web page
     or multi-column layout) and synthesizes their union into a combined parent container.
     """
-    panels = [b for b in boxes if b.get('w', 0) >= 80 and b.get('h', 0) >= 100 and b.get('type') in ('panel', 'detected', 'grid_container')]
+    panels = [b for b in boxes if b.get('w', 0) >= 50 and b.get('h', 0) >= 100 and b.get('type') in ('panel', 'detected', 'grid_container')]
     if len(panels) < 2:
         return []
 
@@ -347,8 +347,10 @@ def cluster_adjacent_columns(boxes):
 
 def detect_window_content_areas(gray, client_boxes):
     """
-    Detects the main content viewport below the header/URL bar in application windows
-    (e.g., browsers, editors) so users can select the full page body without tabs and URL bar.
+    Detects internal window structure in desktop applications (browsers, Discord, Slack, editors):
+    1. Browser page viewport below the header/URL bar.
+    2. Column panels & sidebars across multi-pane application layouts.
+    3. Header bars, chat message panes, and footer input fields within panels.
     """
     content_boxes = []
     h_img, w_img = gray.shape
@@ -359,42 +361,124 @@ def detect_window_content_areas(gray, client_boxes):
         ww = min(w_img - wx, int(win.get('w', 0)))
         wh = min(h_img - wy, int(win.get('h', 0)))
 
-        if ww < 300 or wh < 200:
+        if ww < 180 or wh < 150:
             continue
 
-        header_min_y = wy + 40
-        header_max_y = wy + min(160, int(wh * 0.35))
-        if header_max_y <= header_min_y or header_max_y >= h_img:
+        win_sub = gray[wy:wy+wh, wx:wx+ww]
+        if win_sub.size == 0:
             continue
 
-        sub_gray = gray[header_min_y:header_max_y, wx:wx + ww]
-        if sub_gray.shape[0] < 5 or sub_gray.shape[1] < 100:
-            continue
+        # 1. Full-window browser header & page body detection
+        if ww >= 300 and wh >= 200:
+            header_min_y = wy + 40
+            header_max_y = wy + min(160, int(wh * 0.35))
+            if header_max_y > header_min_y and header_max_y < h_img:
+                sub_gray = gray[header_min_y:header_max_y, wx:wx + ww]
+                if sub_gray.shape[0] >= 5 and sub_gray.shape[1] >= 100:
+                    row_diffs = np.mean(np.abs(np.diff(sub_gray.astype(np.float32), axis=0)), axis=1)
+                    if len(row_diffs) > 0:
+                        best_row_idx = int(np.argmax(row_diffs))
+                        max_diff = float(row_diffs[best_row_idx])
+                        if max_diff >= 3.5:
+                            sep_y = header_min_y + best_row_idx + 1
+                            body_h = (wy + wh) - sep_y
+                            if body_h >= 100:
+                                content_boxes.append({
+                                    "x": int(wx),
+                                    "y": int(sep_y),
+                                    "w": int(ww),
+                                    "h": int(body_h),
+                                    "area": int(ww * body_h),
+                                    "extent": 1.0,
+                                    "contrast": 35.0,
+                                    "type": "panel",
+                                    "title": win.get("title", ""),
+                                    "class": win.get("class", "")
+                                })
 
-        # Horizontal gradient across the full window width
-        row_diffs = np.mean(np.abs(np.diff(sub_gray.astype(np.float32), axis=0)), axis=1)
-        if len(row_diffs) == 0:
-            continue
+        # 2. Multi-column and sidebar detection (Discord, Slack, VS Code, Spotify)
+        diffs_col = np.abs(np.diff(win_sub.astype(np.float32), axis=1))
+        col_frac = np.mean(diffs_col >= 3.0, axis=0)
+        splits = [idx + 1 for idx, frac in enumerate(col_frac) if frac >= 0.40]
 
-        best_row_idx = int(np.argmax(row_diffs))
-        max_diff = float(row_diffs[best_row_idx])
+        merged_splits = []
+        for s in splits:
+            if not merged_splits or (s - merged_splits[-1]) > 8:
+                merged_splits.append(s)
 
-        if max_diff >= 3.5:
-            sep_y = header_min_y + best_row_idx + 1
-            body_h = (wy + wh) - sep_y
-            if body_h >= 100:
-                content_boxes.append({
-                    "x": int(wx),
-                    "y": int(sep_y),
-                    "w": int(ww),
-                    "h": int(body_h),
-                    "area": int(ww * body_h),
-                    "extent": 1.0,
-                    "contrast": 35.0,
-                    "type": "panel",
-                    "title": win.get("title", ""),
-                    "class": win.get("class", "")
-                })
+        left_edge = 0
+        right_edge = ww
+        inner_splits = []
+        for s in merged_splits:
+            if s < 36:
+                left_edge = s
+            elif s > ww - 36:
+                right_edge = s
+            else:
+                inner_splits.append(s)
+
+        col_bounds = [left_edge] + inner_splits + [right_edge]
+        if len(col_bounds) > 2:
+            for k in range(len(col_bounds) - 1):
+                cx1 = col_bounds[k]
+                cx2 = col_bounds[k + 1]
+                cw = cx2 - cx1
+                if cw >= 40:
+                    sub_col = win_sub[:, cx1:cx2]
+                    diffs_row = np.abs(np.diff(sub_col.astype(np.float32), axis=0))
+                    row_frac = np.mean(diffs_row >= 3.0, axis=1)
+                    row_splits = [idx + 1 for idx, frac in enumerate(row_frac) if frac >= 0.40]
+
+                    merged_row_splits = []
+                    for rs in row_splits:
+                        if not merged_row_splits or (rs - merged_row_splits[-1]) > 8:
+                            merged_row_splits.append(rs)
+
+                    top_edge = 0
+                    bottom_edge = wh
+                    inner_rows = []
+                    for rs in merged_row_splits:
+                        if rs < 36:
+                            top_edge = rs
+                        elif rs > wh - 36:
+                            bottom_edge = rs
+                        else:
+                            inner_rows.append(rs)
+
+                    row_bounds = [top_edge] + inner_rows + [bottom_edge]
+                    # Full column panel
+                    content_boxes.append({
+                        "x": int(wx + cx1),
+                        "y": int(wy + top_edge),
+                        "w": int(cw),
+                        "h": int(bottom_edge - top_edge),
+                        "area": int(cw * (bottom_edge - top_edge)),
+                        "extent": 1.0,
+                        "contrast": 28.0,
+                        "type": "panel",
+                        "title": win.get("title", ""),
+                        "class": win.get("class", "")
+                    })
+
+                    # Sub-panels within column (if any internal horizontal dividers)
+                    if len(row_bounds) > 2:
+                        for rk in range(len(row_bounds) - 1):
+                            ry1 = row_bounds[rk]
+                            ry2 = row_bounds[rk + 1]
+                            rh = ry2 - ry1
+                            if rh >= 24 and rh != (bottom_edge - top_edge):
+                                content_boxes.append({
+                                    "x": int(wx + cx1),
+                                    "y": int(wy + ry1),
+                                    "w": int(cw),
+                                    "h": int(rh),
+                                    "area": int(cw * rh),
+                                    "extent": 1.0,
+                                    "contrast": 30.0,
+                                    "type": "input" if (24 <= rh <= 80 and ry2 >= wh - 100) else "panel",
+                                    "title": win.get("title", ""),
+                                    "class": win.get("class", "")
+                                })
 
     return content_boxes
 
