@@ -589,6 +589,8 @@ class TestUIDetector(unittest.TestCase):
 
         text_boxes = [b for b in boxes if b.get("type") in ("text", "text_block")]
         self.assertGreaterEqual(len(text_boxes), 1, "Expected text lines or text blocks to be detected")
+        para_boxes = [b for b in boxes if b.get("type") == "text_block"]
+        self.assertGreaterEqual(len(para_boxes), 1, "Expected multi-line paragraph text_block to be synthesized")
 
     def test_input_field_classification(self):
         # Search bar / text input: 450x36

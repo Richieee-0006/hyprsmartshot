@@ -1,6 +1,48 @@
 {
   "language": "en",
-  "ocrLanguages": "eng+ces",
+  "ocrLanguages": "eng",
   "postSaveHook": "",
-  "postCopyHook": ""
+  "postCopyHook": "",
+  "activePreset": "default",
+  "presets": {
+    "default": {
+      "name": "Default",
+      "offsetX": 0,
+      "offsetY": 0,
+      "inset": 0,
+      "filter": "all"
+    },
+    "browser": {
+      "name": "Browser",
+      "offsetX": 0,
+      "offsetY": 0,
+      "inset": 0,
+      "filter": "content"
+    },
+    "terminal": {
+      "name": "Terminal",
+      "offsetX": 0,
+      "offsetY": 0,
+      "inset": 1,
+      "filter": "window"
+    },
+    "game": {
+      "name": "Game",
+      "offsetX": 0,
+      "offsetY": 0,
+      "inset": 0,
+      "filter": "dense"
+    }
+  },
+  "appRules": {
+    "firefox": "browser",
+    "google-chrome": "browser",
+    "chromium": "browser",
+    "brave-browser": "browser",
+    "zen-browser": "browser",
+    "kitty": "terminal",
+    "alacritty": "terminal",
+    "foot": "terminal"
+  }
 }
+

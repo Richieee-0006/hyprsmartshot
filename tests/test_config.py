@@ -24,11 +24,21 @@ class TestConfiguration(unittest.TestCase):
         self.assertIn("language", cfg)
         self.assertEqual(cfg["language"], "en")
         self.assertIn("ocrLanguages", cfg)
-        self.assertEqual(cfg["ocrLanguages"], "eng+ces")
+        self.assertEqual(cfg["ocrLanguages"], "eng")
         self.assertIn("postSaveHook", cfg)
         self.assertEqual(cfg["postSaveHook"], "")
         self.assertIn("postCopyHook", cfg)
         self.assertEqual(cfg["postCopyHook"], "")
+        self.assertIn("activePreset", cfg)
+        self.assertEqual(cfg["activePreset"], "default")
+        self.assertIn("presets", cfg)
+        self.assertIn("default", cfg["presets"])
+        self.assertIn("browser", cfg["presets"])
+        self.assertIn("terminal", cfg["presets"])
+        self.assertIn("game", cfg["presets"])
+        self.assertIn("appRules", cfg)
+        self.assertIn("firefox", cfg["appRules"])
+        self.assertIn("kitty", cfg["appRules"])
 
     def test_runner_post_save_hook_resolution(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -79,6 +89,10 @@ class TestConfiguration(unittest.TestCase):
         self.assertIn("property string ocrLanguages:", content)
         self.assertIn("property string postSaveHook:", content)
         self.assertIn("property string postCopyHook:", content)
+        self.assertIn("property string activePreset:", content)
+        self.assertIn("property var presets:", content)
+        self.assertIn("property var appRules:", content)
+        self.assertIn("function resolvePresetForApp(", content)
         self.assertIn("configJsonPath:", content)
         # Ensure TOML is not referenced in Config.qml
         self.assertNotIn("config.toml", content.lower())
