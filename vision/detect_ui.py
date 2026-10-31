@@ -397,6 +397,13 @@ def detect_window_content_areas(gray, client_boxes):
                                 })
 
         # 2. Multi-column and sidebar detection (Discord, Slack, VS Code, Spotify)
+        # Skip for game windows where 3D terrain/sky edges should not be split into fake columns
+        win_class = str(win.get("class", "")).lower()
+        win_title = str(win.get("title", "")).lower()
+        is_game = any(g in win_class for g in ["minecraft", "steam_app", "gamescope", "wine", "lutris", "heroic", "retroarch", "unity", "unreal"]) or ("multiplayer" in win_title and "third-party" in win_title)
+        if is_game:
+            continue
+
         diffs_col = np.abs(np.diff(win_sub.astype(np.float32), axis=1))
         col_frac = np.mean(diffs_col >= 3.0, axis=0)
         splits = [idx + 1 for idx, frac in enumerate(col_frac) if frac >= 0.40]

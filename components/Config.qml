@@ -35,6 +35,9 @@ Singleton {
         "discord": "browser",
         "vesktop": "browser",
         "webcord": "browser",
+        "equibop": "browser",
+        "com.mojang.minecraft": "game",
+        "minecraft": "game",
         "kitty": "terminal",
         "alacritty": "terminal",
         "foot": "terminal"
