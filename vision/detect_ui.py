@@ -145,14 +145,18 @@ def compute_border_contrast(gray, x, y, w, h):
     right_out = gray[y:y+h, x+w:min(w_img, x+w+d)]
     diff_r = abs(float(right_in.mean()) - float(right_out.mean())) if right_in.size and right_out.size else 0.0
 
-    return float((diff_t + diff_b + diff_l + diff_r) / 4.0)
+    # Best 3 edges (handles HUD/game panels with an open/gradient edge against 3D game scenes)
+    diffs = sorted([diff_t, diff_b, diff_l, diff_r], reverse=True)
+    best3 = float(sum(diffs[:3]) / 3.0)
+    avg4 = float(sum(diffs) / 4.0)
+    return max(avg4, best3 * 0.92)
 
 def is_valid_border(gray, x, y, w, h):
     """
     Checks if a candidate bounding box has a genuine UI border.
     In dark scenes (mean < 55, typical dark fantasy UI / RPG frames),
-    a contrast of 2.2 is clearly visible and accepted.
-    In brighter scenes, a contrast of 5.5 is required.
+    a contrast of 1.8 is clearly visible and accepted.
+    In brighter scenes, a contrast of 4.2 is required.
     """
     h_img, w_img = gray.shape
     if x <= 1 or y <= 1 or x + w >= w_img - 2 or y + h >= h_img - 2:
@@ -166,15 +170,15 @@ def is_valid_border(gray, x, y, w, h):
 
     # Adaptive contrast threshold based on human contrast sensitivity (Weber-Fechner law)
     if local_mean < 45.0:
-        req_contrast = 2.2
+        req_contrast = 1.8
     elif local_mean < 80.0:
-        req_contrast = 3.6
+        req_contrast = 2.8
     else:
-        req_contrast = 5.5
+        req_contrast = 4.2
 
     # Small shapes (<28px) have concentrated borders; allow slight tolerance
     if w < 28 or h < 28:
-        req_contrast = max(2.0, req_contrast * 0.85)
+        req_contrast = max(1.8, req_contrast * 0.85)
 
     return (contrast >= req_contrast), contrast
 
@@ -394,11 +398,68 @@ def detect_window_content_areas(gray, client_boxes):
 
     return content_boxes
 
+def cluster_text_paragraphs(text_lines, min_lines=2):
+    """Clusters vertically adjacent text lines into full paragraph text_block bounding boxes."""
+    if len(text_lines) < min_lines:
+        return []
+
+    sorted_lines = sorted(text_lines, key=lambda b: (b['y'], b['x']))
+    paragraphs = []
+    current_para = [sorted_lines[0]]
+
+    for line in sorted_lines[1:]:
+        last = current_para[-1]
+        vgap = line['y'] - (last['y'] + last['h'])
+        max_vgap = max(32, int(last['h'] * 1.6))
+
+        last_x2 = last['x'] + last['w']
+        line_x2 = line['x'] + line['w']
+        overlap_w = min(last_x2, line_x2) - max(last['x'], line['x'])
+        aligned = (overlap_w > 0) or (abs(line['x'] - last['x']) <= 40)
+
+        if -6 <= vgap <= max_vgap and aligned:
+            current_para.append(line)
+        else:
+            if len(current_para) >= min_lines:
+                px = min(l['x'] for l in current_para)
+                py = min(l['y'] for l in current_para)
+                pw = max(l['x'] + l['w'] for l in current_para) - px
+                ph = max(l['y'] + l['h'] for l in current_para) - py
+                paragraphs.append({
+                    'x': int(px),
+                    'y': int(py),
+                    'w': int(pw),
+                    'h': int(ph),
+                    'area': int(pw * ph),
+                    'extent': 0.96,
+                    'contrast': 35.0,
+                    'type': 'text_block'
+                })
+            current_para = [line]
+
+    if len(current_para) >= min_lines:
+        px = min(l['x'] for l in current_para)
+        py = min(l['y'] for l in current_para)
+        pw = max(l['x'] + l['w'] for l in current_para) - px
+        ph = max(l['y'] + l['h'] for l in current_para) - py
+        paragraphs.append({
+            'x': int(px),
+            'y': int(py),
+            'w': int(pw),
+            'h': int(ph),
+            'area': int(pw * ph),
+            'extent': 0.96,
+            'contrast': 35.0,
+            'type': 'text_block'
+        })
+
+    return paragraphs
+
 def detect_text_regions(gray, orig_w, orig_h):
     """
     Detects text lines, code blocks, labels, and paragraph blocks.
     Uses horizontal morphological gradient to capture character strokes,
-    and directional morphology to bridge letters into lines and lines into paragraphs.
+    and directional morphology + coordinate clustering to synthesize entire paragraphs.
     """
     # 1. Sobel-x gradient captures vertical character strokes (letters)
     grad_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
@@ -417,7 +478,7 @@ def detect_text_regions(gray, orig_w, orig_h):
         if w >= 20 and 8 <= h <= 54:
             # Check internal pixel standard deviation to ensure it contains texture/glyphs
             roi = gray[y:y+h, x:x+w]
-            if roi.size and float(np.std(roi)) >= 6.5:
+            if roi.size and float(np.std(roi)) >= 6.0:
                 text_boxes.append({
                     'x': int(x),
                     'y': int(y),
@@ -429,17 +490,23 @@ def detect_text_regions(gray, orig_w, orig_h):
                     'type': 'text'
                 })
 
-    # 3. Vertical closing on the line mask to synthesize paragraph and code blocks
-    k_para = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 15))
-    closed_para = cv2.morphologyEx(thresh_line, cv2.MORPH_CLOSE, k_para)
+    # Synthesize multi-line paragraph blocks from detected text lines
+    para_boxes = cluster_text_paragraphs(text_boxes)
+    text_boxes.extend(para_boxes)
+
+    # 3. Morphological closing on the line mask to also capture dense text/code blocks
+    k_para_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+    closed_h = cv2.morphologyEx(thresh_line, cv2.MORPH_CLOSE, k_para_h)
+    k_para_v = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 30))
+    closed_para = cv2.morphologyEx(closed_h, cv2.MORPH_CLOSE, k_para_v)
     contours_para, _ = cv2.findContours(closed_para, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for cnt in contours_para:
         x, y, w, h = cv2.boundingRect(cnt)
         # Paragraphs must have substantial height (at least 2 lines) and width
-        if w >= 36 and h >= 26 and (w * h) >= 1200:
+        if w >= 36 and h >= 26 and (w * h) >= 1000:
             roi = gray[y:y+h, x:x+w]
-            if roi.size and float(np.std(roi)) >= 6.5:
+            if roi.size and float(np.std(roi)) >= 6.0:
                 text_boxes.append({
                     'x': int(x),
                     'y': int(y),
@@ -604,13 +671,15 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
 
         area = cv2.contourArea(cnt)
         extent = float(area) / box_area
-        min_extent = 0.45 if box_area < 450 else 0.50
+        # Allow ornate/curved game panels down to 0.38 extent if substantial in size
+        min_extent = 0.38 if (w >= 160 and h >= 50) else (0.42 if box_area < 450 else 0.48)
         if extent < min_extent:
             continue
 
         peri = cv2.arcLength(cnt, True)
         approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        max_vertices = 18 if box_area < 500 else 14
+        # Support ornate fantasy frames, beveled corner UI, and game HUD contours with up to 28 vertices
+        max_vertices = 24 if box_area < 500 else 28
         if len(approx) > max_vertices:
             continue
 

@@ -5,6 +5,21 @@ Rectangle {
 
     property int selectionW: 0
     property int selectionH: 0
+    property string ocrLang: (typeof Config !== "undefined" && Config && Config.ocrLanguages && Config.ocrLanguages.trim().length > 0) ? Config.ocrLanguages.trim() : "eng"
+    property bool ocrMenuOpen: false
+
+    readonly property var ocrModes: [
+        { id: "eng",     shortLabel: "EN",    label: "English (eng)" },
+        { id: "ces",     shortLabel: "CS",    label: "Čeština (ces)" },
+        { id: "eng+ces", shortLabel: "EN+CS", label: "English + Čeština" }
+    ]
+
+    function currentOcrShortLabel() {
+        for (let i = 0; i < ocrModes.length; i++) {
+            if (ocrModes[i].id === root.ocrLang) return ocrModes[i].shortLabel;
+        }
+        return root.ocrLang.toUpperCase();
+    }
 
     signal copyRequested()
     signal saveRequested()
@@ -40,6 +55,7 @@ Rectangle {
         } else {
             opacity = 0.0;
             scale = 0.95;
+            ocrMenuOpen = false;
         }
     }
     Component.onCompleted: {
@@ -227,38 +243,200 @@ Rectangle {
             }
         }
 
-        // OCR button [O]
+        // OCR button [O] with mode/language menu
         Rectangle {
+            id: ocrContainer
             height: 28
-            width: ocrRow.implicitWidth + 16
+            width: ocrSplitRow.implicitWidth
             radius: 14
-            color: ocrMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.2) : Qt.rgba(1, 1, 1, 0.08)
+            color: Qt.rgba(1, 1, 1, 0.08)
             anchors.verticalCenter: parent.verticalCenter
 
-            MouseArea {
-                id: ocrMouse
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.ocrRequested()
+            Row {
+                id: ocrSplitRow
+                height: parent.height
+                spacing: 0
+
+                // Left action part: trigger OCR
+                Rectangle {
+                    height: parent.height
+                    width: ocrRow.implicitWidth + 14
+                    radius: 14
+                    color: ocrMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : "transparent"
+
+                    MouseArea {
+                        id: ocrMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton) {
+                                root.ocrMenuOpen = !root.ocrMenuOpen;
+                            } else {
+                                root.ocrMenuOpen = false;
+                                root.ocrRequested();
+                            }
+                        }
+                    }
+
+                    Row {
+                        id: ocrRow
+                        anchors.centerIn: parent
+                        spacing: 5
+
+                        Text {
+                            text: "󰉐"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 13
+                            color: Theme.text
+                        }
+                        Text {
+                            text: I18n.t("ocr")
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 12
+                            color: Theme.text
+                        }
+                    }
+                }
+
+                // Divider
+                Rectangle {
+                    width: 1
+                    height: 16
+                    color: Theme.barBorder
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+
+                // Right dropdown toggle: change OCR mode/language
+                Rectangle {
+                    id: ocrMenuToggle
+                    height: parent.height
+                    width: ocrModeRow.implicitWidth + 12
+                    radius: 14
+                    color: (ocrMenuMouse.containsMouse || root.ocrMenuOpen) ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+
+                    MouseArea {
+                        id: ocrMenuMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.ocrMenuOpen = !root.ocrMenuOpen
+                    }
+
+                    Row {
+                        id: ocrModeRow
+                        anchors.centerIn: parent
+                        spacing: 3
+
+                        Text {
+                            text: root.currentOcrShortLabel()
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            font.weight: Font.DemiBold
+                            color: root.ocrMenuOpen ? Theme.accent : Theme.textSubtle
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Text {
+                            text: root.ocrMenuOpen ? "▴" : "▾"
+                            font.family: Theme.fontFamily
+                            font.pixelSize: 10
+                            color: root.ocrMenuOpen ? Theme.accent : Theme.textSubtle
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
             }
 
-            Row {
-                id: ocrRow
-                anchors.centerIn: parent
-                spacing: 5
-
-                Text {
-                    text: "󰉐"
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 13
-                    color: Theme.text
+            // OCR Mode / Language Popup Menu
+            Rectangle {
+                id: ocrDropdown
+                parent: root.parent ? root.parent : root
+                visible: root.visible && root.ocrMenuOpen
+                width: 160
+                height: ocrMenuCol.implicitHeight + 12
+                radius: 10
+                color: Theme.barBackground
+                border.color: Theme.selectionBorder
+                border.width: 1
+                z: 50
+                x: {
+                    if (root.parent && parent === root.parent) {
+                        const rightEdge = root.x + contentRow.x + ocrContainer.x + ocrContainer.width;
+                        return Math.max(8, Math.min(root.parent.width - width - 8, rightEdge - width));
+                    }
+                    return Math.max(0, ocrContainer.width - width);
                 }
-                Text {
-                    text: I18n.t("ocr")
-                    font.family: Theme.fontFamily
-                    font.pixelSize: 12
-                    color: Theme.text
+                y: {
+                    if (root.parent && parent === root.parent) {
+                        return (root.y > height + 16) ? (root.y - height - 6) : (root.y + root.height + 6);
+                    }
+                    return (root.y > height + 16) ? (-height - 6) : (ocrContainer.height + 6);
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onPressed: (mouse) => mouse.accepted = true
+                    onClicked: (mouse) => mouse.accepted = true
+                }
+
+                Column {
+                    id: ocrMenuCol
+                    anchors.centerIn: parent
+                    width: parent.width - 12
+                    spacing: 2
+
+                    Repeater {
+                        model: root.ocrModes
+
+                        Rectangle {
+                            width: ocrMenuCol.width
+                            height: 26
+                            radius: 6
+                            readonly property bool isSelected: root.ocrLang === modelData.id
+                            color: isSelected ? Theme.accent : (modeItemMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.12) : "transparent")
+
+                            MouseArea {
+                                id: modeItemMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.ocrLang = modelData.id;
+                                    if (typeof Config !== "undefined" && Config) {
+                                        Config.ocrLanguages = modelData.id;
+                                    }
+                                    root.ocrMenuOpen = false;
+                                }
+                            }
+
+                            Row {
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                spacing: 6
+
+                                Text {
+                                    text: isSelected ? "󰄬" : " "
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    color: isSelected ? "#ffffff" : Theme.textSubtle
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+
+                                Text {
+                                    text: modelData.label
+                                    font.family: Theme.fontFamily
+                                    font.pixelSize: 11
+                                    font.weight: isSelected ? Font.DemiBold : Font.Normal
+                                    color: isSelected ? "#ffffff" : Theme.text
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -19,6 +19,21 @@ Item {
     property real pillSpawnX: 0
     property real pillSpawnY: 0
 
+    property string activePresetKey: {
+        const activeClass = Quickshell.env("SMARTSHOT_ACTIVE_CLASS") || "";
+        if (activeClass && typeof Config !== "undefined" && Config && Config.resolvePresetForApp) {
+            return Config.resolvePresetForApp(activeClass);
+        }
+        return (typeof Config !== "undefined" && Config && Config.activePreset) ? Config.activePreset : "default";
+    }
+    property bool manualPresetSelected: false
+
+    onActivePresetKeyChanged: {
+        if (!root.isConfirmed && !root.isDragging) {
+            updateHoverCandidates(cursorX, cursorY);
+        }
+    }
+
     onModeChanged: {
         if (mode === "screen") {
             setSelection(0, 0, root.width, root.height);
@@ -272,6 +287,7 @@ Item {
             z: 1
 
             onPressed: (mouse) => {
+                actionPill.ocrMenuOpen = false;
                 if (mouse.button === Qt.LeftButton) {
                     root.isMoving = true;
                     const p = mapToItem(root, mouse.x, mouse.y);
@@ -618,7 +634,46 @@ Item {
             }
         }
 
-        if (candidates.length === 0) {
+        // Auto-detect app preset from hovered window unless user manually chose a preset
+        if (!root.manualPresetSelected && typeof Config !== "undefined" && Config && Config.resolvePresetForApp) {
+            const activeWin = topFloatingWindow || (tiledWindows.length > 0 ? tiledWindows[0] : null);
+            if (activeWin && activeWin.class) {
+                const detectedPreset = Config.resolvePresetForApp(activeWin.class);
+                if (detectedPreset && detectedPreset !== root.activePresetKey) {
+                    root.activePresetKey = detectedPreset;
+                }
+            }
+        }
+
+        const preset = (typeof Config !== "undefined" && Config && Config.getPreset)
+            ? Config.getPreset(root.activePresetKey)
+            : { offsetX: 0, offsetY: 0, inset: 0, filter: "all" };
+
+        let processedCandidates = candidates;
+        if (preset.filter === "window") {
+            const winOnly = candidates.filter(c => c.type === "window" || c.type === "floating_window");
+            if (winOnly.length > 0) processedCandidates = winOnly;
+        } else if (preset.filter === "content") {
+            const contentOnly = candidates.filter(c => c.type === "panel" || c.type === "content" || c.type === "detected");
+            if (contentOnly.length > 0) processedCandidates = contentOnly;
+        }
+
+        const offX = preset.offsetX || 0;
+        const offY = preset.offsetY || 0;
+        const inset = preset.inset || 0;
+
+        if (offX !== 0 || offY !== 0 || inset !== 0) {
+            for (let i = 0; i < processedCandidates.length; i++) {
+                const c = processedCandidates[i];
+                c.x = Math.max(0, c.x + offX + inset);
+                c.y = Math.max(0, c.y + offY + inset);
+                c.w = Math.max(1, c.w - (2 * inset));
+                c.h = Math.max(1, c.h - (2 * inset));
+                c.area = c.w * c.h;
+            }
+        }
+
+        if (processedCandidates.length === 0) {
             root.candidateHierarchy = [];
             root.targetW = 0;
             root.targetH = 0;
@@ -626,12 +681,12 @@ Item {
         }
 
         // Sort candidates by area ascending (smallest first: slot -> grid_row -> grid_container -> panel -> window)
-        candidates.sort((a, b) => a.area - b.area);
+        processedCandidates.sort((a, b) => a.area - b.area);
 
         // Deduplicate similar candidates
         const unique = [];
-        for (let i = 0; i < candidates.length; i++) {
-            const c = candidates[i];
+        for (let i = 0; i < processedCandidates.length; i++) {
+            const c = processedCandidates[i];
             let dup = false;
             for (let j = 0; j < unique.length; j++) {
                 const u = unique[j];
@@ -815,6 +870,7 @@ Item {
         }
 
         onPressed: (mouse) => {
+            actionPill.ocrMenuOpen = false;
             if (mouse.button === Qt.RightButton) {
                 if (root.isDragging) {
                     root.isDragging = false;

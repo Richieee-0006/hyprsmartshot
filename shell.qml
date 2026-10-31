@@ -168,7 +168,7 @@ Scope {
             const ocrNoTextDesc = I18n.t("ocrNoTextDesc");
             const notFoundTitle = I18n.t("ocrNotFoundTitle");
             const notFoundDesc = I18n.t("ocrNotFoundDesc");
-            const ocrLangs = (typeof Config !== "undefined" && Config && Config.ocrLanguages && Config.ocrLanguages.trim().length > 0) ? Config.ocrLanguages.trim() : "eng+ces";
+            const ocrLangs = (typeof Config !== "undefined" && Config && Config.ocrLanguages && Config.ocrLanguages.trim().length > 0) ? Config.ocrLanguages.trim() : "eng";
 
             const cmd = `${crop} && {
                 if command -v tesseract >/dev/null 2>&1; then
@@ -216,6 +216,12 @@ Scope {
             onAnnotateAction: (x, y, w, h) => root.doAnnotate(x, y, w, h)
             onOcrAction: (x, y, w, h) => root.doOcr(x, y, w, h)
             onCancelRequested: root.closeOverlay()
+
+            onActivePresetKeyChanged: {
+                if (controlBar.currentPreset !== selector.activePresetKey) {
+                    controlBar.currentPreset = selector.activePresetKey;
+                }
+            }
         }
 
         // Top Floating Control Bar
@@ -226,11 +232,16 @@ Scope {
             anchors.topMargin: 24
             z: 30
             currentMode: root.mode
+            currentPreset: selector.activePresetKey
             magnifierActive: root.magnifierActive
 
             onModeSelected: (modeId) => {
                 root.mode = modeId;
                 selector.mode = modeId;
+            }
+            onPresetSelected: (presetKey) => {
+                selector.manualPresetSelected = true;
+                selector.activePresetKey = presetKey;
             }
             onToggleMagnifierRequested: root.magnifierActive = !root.magnifierActive
             onCloseRequested: root.closeOverlay()
@@ -277,7 +288,9 @@ Scope {
 
             Keys.onEscapePressed: (event) => {
                 event.accepted = true;
-                if (selector.isConfirmed) {
+                if (controlBar.presetDropdownOpen) {
+                    controlBar.presetDropdownOpen = false;
+                } else if (selector.isConfirmed) {
                     selector.clearConfirmation();
                 } else {
                     root.closeOverlay();

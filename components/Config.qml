@@ -14,9 +14,46 @@ Singleton {
     readonly property string defaultJsonPath: repoDir + "/config/hyprsmartshot/config.json"
 
     // Configuration properties
-    property string ocrLanguages: "eng+ces"
+    property string ocrLanguages: "eng"
     property string postSaveHook: ""
     property string postCopyHook: ""
+    property string activePreset: "default"
+
+    property var presets: ({
+        "default":  { name: "Default",  offsetX: 0, offsetY: 0, inset: 0, filter: "all" },
+        "browser":  { name: "Browser",  offsetX: 0, offsetY: 0, inset: 0, filter: "content" },
+        "terminal": { name: "Terminal", offsetX: 0, offsetY: 0, inset: 1, filter: "window" },
+        "game":     { name: "Game",     offsetX: 0, offsetY: 0, inset: 0, filter: "dense" }
+    })
+
+    property var appRules: ({
+        "firefox": "browser",
+        "google-chrome": "browser",
+        "chromium": "browser",
+        "brave-browser": "browser",
+        "zen-browser": "browser",
+        "kitty": "terminal",
+        "alacritty": "terminal",
+        "foot": "terminal"
+    })
+
+    function resolvePresetForApp(appClass) {
+        if (!appClass) return root.activePreset;
+        const low = String(appClass).toLowerCase();
+        for (let rule in root.appRules) {
+            if (low.indexOf(rule.toLowerCase()) !== -1) {
+                return root.appRules[rule];
+            }
+        }
+        return root.activePreset;
+    }
+
+    function getPreset(presetKey) {
+        if (root.presets && root.presets[presetKey]) {
+            return root.presets[presetKey];
+        }
+        return root.presets["default"] || { name: "Default", offsetX: 0, offsetY: 0, inset: 0, filter: "all" };
+    }
 
     property bool configJsonLoaded: false
 
@@ -30,6 +67,19 @@ Singleton {
         }
         if (typeof data.postCopyHook === "string") {
             root.postCopyHook = data.postCopyHook.trim();
+        }
+        if (typeof data.activePreset === "string" && data.activePreset.trim().length > 0) {
+            root.activePreset = data.activePreset.trim();
+        }
+        if (data.presets && typeof data.presets === "object") {
+            const merged = Object.assign({}, root.presets);
+            for (let k in data.presets) {
+                merged[k] = Object.assign({}, merged[k] || {}, data.presets[k]);
+            }
+            root.presets = merged;
+        }
+        if (data.appRules && typeof data.appRules === "object") {
+            root.appRules = Object.assign({}, root.appRules, data.appRules);
         }
     }
 
