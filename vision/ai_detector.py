@@ -26,11 +26,12 @@ if _VISION_DIR not in sys.path:
 from config_loader import load_config
 
 DEFAULT_AI_PROMPT = (
-    "Detect up to 12 key UI regions (windows, panels, sidebar, dialogs, buttons, inputs, dock, text blocks). "
+    "Locate 5 to 12 distinct visual UI regions in this screenshot (windows, panels, sidebars, code/text blocks, terminal output, top bar, dialogs, buttons, inputs). "
+    "You MUST return at least 4 bounding boxes. "
     "Coordinates are normalized 0..1000 where x1,x2 are horizontal (left=0, right=1000) and y1,y2 are vertical (top=0, bottom=1000). "
-    "Return strict JSON array: "
+    "Output ONLY a JSON array: "
     "[{\"label\":\"...\",\"type\":\"panel|button|input|slot|text_block\","
-    "\"x1\":0,\"y1\":0,\"x2\":500,\"y2\":900,\"confidence\":0.9}]"
+    "\"x1\":10,\"y1\":20,\"x2\":500,\"y2\":400,\"confidence\":0.9}]"
 )
 
 _NON_VISION_MODELS = {
@@ -79,12 +80,12 @@ _PROVIDER_DEFAULTS = {
     "gemini": {
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "apiKeyEnv": "GEMINI_API_KEY",
-        "model": "gemini-3.8-flash",
+        "model": "gemini-3.5-flash-lite",
     },
     "openrouter": {
         "baseUrl": "https://openrouter.ai/api/v1",
         "apiKeyEnv": "OPENROUTER_API_KEY",
-        "model": "google/gemma-4-31b-it:free",
+        "model": "dots-studio/dots-3-note-preview:free",
     },
     "groq": {
         "baseUrl": "https://api.groq.com/openai/v1",
@@ -330,6 +331,8 @@ def _call_openai_compatible(b64_img, prompt_text, prov_cfg, timeout_s=35.0):
                 }
             ],
         }
+        if "openrouter.ai" in target_url:
+            payload["reasoning"] = {"effort": "none"}
         resp = requests.post(f"{target_url}/chat/completions", headers=headers, json=payload, timeout=timeout_s)
         resp.raise_for_status()
         return resp.json()
@@ -353,8 +356,11 @@ def _call_openai_compatible(b64_img, prompt_text, prov_cfg, timeout_s=35.0):
     msg = choices[0].get("message", {})
     content = msg.get("content", "")
     if isinstance(content, list):
-        return "\n".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
-    return str(content or "")
+        content = "\n".join(str(p.get("text", "")) for p in content if isinstance(p, dict))
+    text_out = str(content or "").strip()
+    if not text_out and msg.get("reasoning"):
+        text_out = str(msg.get("reasoning") or "").strip()
+    return text_out
 
 
 def _call_gemini(b64_img, prompt_text, prov_cfg, timeout_s=15.0):
@@ -363,7 +369,7 @@ def _call_gemini(b64_img, prompt_text, prov_cfg, timeout_s=15.0):
         raise RuntimeError("Missing Gemini API key (set GEMINI_API_KEY or ai.providers.gemini.apiKey)")
 
     base_url = str(prov_cfg.get("baseUrl", "https://generativelanguage.googleapis.com/v1beta")).rstrip("/")
-    model = str(prov_cfg.get("model", "gemini-3.8-flash") or "gemini-3.8-flash").strip()
+    model = str(prov_cfg.get("model", "gemini-3.5-flash-lite") or "gemini-3.5-flash-lite").strip()
     if base_url.endswith("/openai"):
         return _call_openai_compatible(b64_img, prompt_text, prov_cfg, timeout_s=timeout_s)
     url = f"{base_url}/models/{model}:generateContent"
@@ -397,7 +403,12 @@ def extract_ai_boxes(raw_text, crop_w, crop_h, offset_x=0, offset_y=0):
     try:
         items = json.loads(match.group(0))
     except Exception:
-        return []
+        items = []
+        for obj_m in re.finditer(r"\{[^{}]+\}", match.group(0)):
+            try:
+                items.append(json.loads(obj_m.group(0)))
+            except Exception:
+                continue
     if not isinstance(items, list):
         return []
 
@@ -688,6 +699,12 @@ def _fetch_live_provider_models(provider, prov_cfg):
             try:
                 resp = requests.get(f"{base_url}/models", params={"key": key}, timeout=3.5)
                 if resp.ok:
+                    raw_gem = []
+                    skip_substrings = (
+                        "embedding", "aqa", "imagen", "veo", "tts", "attributed",
+                        "gemini-2.5-", "gemini-4-", "lyria", "-image", "transcribe",
+                        "deep-research", "antigravity", "robotics", "computer-use", "customtools",
+                    )
                     for item in resp.json().get("models", []):
                         if not isinstance(item, dict):
                             continue
@@ -697,13 +714,29 @@ def _fetch_live_provider_models(provider, prov_cfg):
                         if (
                             name
                             and "generateContent" in methods
-                            and not any(x in low for x in ("embedding", "aqa", "imagen", "veo", "tts", " attributed"))
+                            and not any(x in low for x in skip_substrings)
                         ):
-                            discovered.append(name)
+                            raw_gem.append(name)
+                    priority_gem = (
+                        "gemini-3.5-flash-lite",
+                        "gemini-flash-lite-latest",
+                        "gemini-3.5-flash",
+                        "gemini-3.1-flash-lite",
+                        "gemini-3.1-flash-lite-preview",
+                        "gemini-3-flash-preview",
+                        "gemma-4-31b-it",
+                        "gemma-4-26b-a4b-it",
+                    )
+                    for pm in priority_gem:
+                        if pm in raw_gem and pm not in discovered:
+                            discovered.append(pm)
+                    for gm in raw_gem:
+                        if gm not in discovered:
+                            discovered.append(gm)
             except Exception:
                 pass
         for sm in _parse_free_llm_skill_models("gemini"):
-            if sm not in discovered:
+            if sm not in discovered and not sm.startswith(("gemini-2.5-", "gemini-4-")):
                 discovered.append(sm)
         return discovered
 
@@ -753,6 +786,8 @@ def _fetch_live_provider_models(provider, prov_cfg):
                         continue
                     if any(x in mid.lower() for x in ("lyria", "whisper", "tts", "embedding")):
                         continue
+                    if provider == "openrouter" and mid.startswith("google/gemma-4-") and mid.endswith(":free"):
+                        continue
                     pricing = m.get("pricing") or {}
                     is_free = (
                         m.get("isFree") is True
@@ -763,7 +798,23 @@ def _fetch_live_provider_models(provider, prov_cfg):
                         free_vis.append(mid)
                     else:
                         paid_vis.append(mid)
-                discovered = free_vis + paid_vis
+                priority_or = (
+                    "dots-studio/dots-3-note-preview:free",
+                    "inclusionai/ling-3.2-flash:free",
+                    "nvidia/nemotron-3.5-super-vl:free",
+                )
+                ordered_free = [pm for pm in priority_or if pm in free_vis]
+                for fm in free_vis:
+                    if fm not in ordered_free:
+                        ordered_free.append(fm)
+                discovered = ordered_free + paid_vis
+            elif "groq.com" in base_url or provider == "groq":
+                ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
+                groq_non_vis = ("whisper", "orpheus", "prompt-guard", "safeguard", "gpt-oss", "allam")
+                discovered = [
+                    m for m in ids
+                    if not any(tok in m.lower() for tok in groq_non_vis)
+                ]
             elif "ovh.net" in base_url or provider == "ovhcloud":
                 ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
                 non_vis_prefixes = ("whisper", "nvr-tts", "bge-", "stable-diffusion", "gpt-oss", "Meta-Llama-3_3")

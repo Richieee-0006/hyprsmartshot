@@ -122,13 +122,13 @@ FocusScope {
                     },
                     gemini: {
                         baseUrl: gem.baseUrl || "https://generativelanguage.googleapis.com/v1beta",
-                        model: gem.model || "gemini-3.8-flash",
+                        model: gem.model || "gemini-3.5-flash-lite",
                         apiKeyEnv: gem.apiKeyEnv || "GEMINI_API_KEY",
                         apiKey: gem.apiKey || ""
                     },
                     openrouter: {
                         baseUrl: ort.baseUrl || "https://openrouter.ai/api/v1",
-                        model: ort.model || "google/gemma-4-31b-it:free",
+                        model: ort.model || "dots-studio/dots-3-note-preview:free",
                         apiKeyEnv: ort.apiKeyEnv || "OPENROUTER_API_KEY",
                         apiKey: ort.apiKey || ""
                     },
@@ -902,7 +902,7 @@ FocusScope {
                         ChoiceSettingRow {
                             title: root.label("AI Provider (Local & Free Cloud)", "Poskytovatel AI (Lokální i Free Cloud)")
                             current: (root.draft.ai && root.draft.ai.provider) || "openai_compatible"
-                            choices: ["copilot", "local_llm", "ollama", "ovhcloud", "kilo", "gemini", "openrouter", "groq", "mistral", "openai_compatible"]
+                            choices: ["groq", "gemini", "openrouter", "copilot", "local_llm", "ovhcloud", "kilo", "ollama", "openai_compatible"]
                             wrapChips: true
                             onChosen: (v) => {
                                 root.setNested("ai", "provider", v);
@@ -1021,7 +1021,7 @@ FocusScope {
                             title: root.label("Vision Model Name", "Název vision modelu")
                             value: root.activeAiProviderCfg().model || ""
                             placeholder: root.activeAiProviderKey() === "gemini"
-                                ? "gemini-3.8-flash"
+                                ? "gemini-3.5-flash-lite"
                                 : (root.activeAiProviderKey() === "copilot" ? "gpt-4.1" : "qwen3.6-35b-vision")
                             onEdited: (t) => root.setAiProviderField("model", t)
                         }

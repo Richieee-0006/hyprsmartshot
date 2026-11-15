@@ -489,8 +489,8 @@ class TestConfiguration(unittest.TestCase):
             "ollama": "qwen2.5vl:7b",
             "ovhcloud": "Qwen2.5-VL-72B-Instruct",
             "kilo": "nvidia/nemotron-3.5-super-vl:free",
-            "gemini": "gemini-3.8-flash",
-            "openrouter": "google/gemma-4-31b-it:free",
+            "gemini": "gemini-3.5-flash-lite",
+            "openrouter": "dots-studio/dots-3-note-preview:free",
             "groq": "qwen/qwen3.8-27b",
             "mistral": "mistral-medium-3-5",
             "openai_compatible": "qwen3.6-35b-vision",
@@ -508,8 +508,9 @@ class TestConfiguration(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": tmp_cache}):
                 gem_list = ai_detector.list_provider_models(cfg, provider_override="gemini", force_refresh=True)
                 self.assertFalse(gem_list["cached"])
-                self.assertIn("gemini-3.8-flash", gem_list["models"])
+                self.assertIn("gemini-3.5-flash-lite", gem_list["models"])
                 self.assertIn("gemma-4-31b-it", gem_list["models"])
+                self.assertNotIn("gemini-2.5-flash", gem_list["models"])
 
                 gem_cached = ai_detector.list_provider_models(cfg, provider_override="gemini", search_query="gemma 31b")
                 self.assertTrue(gem_cached["cached"])

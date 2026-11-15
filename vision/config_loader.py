@@ -120,11 +120,12 @@ DEFAULT_CONFIG = {
         "maxImageDim": 960,
         "defaultAction": "ocr",
         "prompt": (
-            "Detect up to 12 key UI regions (windows, panels, sidebar, dialogs, buttons, inputs, dock, text blocks). "
+            "Locate 5 to 12 distinct visual UI regions in this screenshot (windows, panels, sidebars, code/text blocks, terminal output, top bar, dialogs, buttons, inputs). "
+            "You MUST return at least 4 bounding boxes. "
             "Coordinates are normalized 0..1000 where x1,x2 are horizontal (left=0, right=1000) and y1,y2 are vertical (top=0, bottom=1000). "
-            "Return strict JSON array: "
+            "Output ONLY a JSON array: "
             "[{\"label\":\"...\",\"type\":\"panel|button|input|slot|text_block\","
-            "\"x1\":0,\"y1\":0,\"x2\":500,\"y2\":900,\"confidence\":0.9}]"
+            "\"x1\":10,\"y1\":20,\"x2\":500,\"y2\":400,\"confidence\":0.9}]"
         ),
         "providers": {
             "copilot": {
@@ -159,13 +160,13 @@ DEFAULT_CONFIG = {
             },
             "gemini": {
                 "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-                "model": "gemini-3.8-flash",
+                "model": "gemini-3.5-flash-lite",
                 "apiKeyEnv": "GEMINI_API_KEY",
                 "apiKey": "",
             },
             "openrouter": {
                 "baseUrl": "https://openrouter.ai/api/v1",
-                "model": "google/gemma-4-31b-it:free",
+                "model": "dots-studio/dots-3-note-preview:free",
                 "apiKeyEnv": "OPENROUTER_API_KEY",
                 "apiKey": "",
             },
