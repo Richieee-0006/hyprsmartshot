@@ -93,52 +93,62 @@ FocusScope {
                     copilot: {
                         baseUrl: cop.baseUrl || "http://127.0.0.1:4141/v1",
                         model: cop.model || "gpt-4.1",
-                        apiKeyEnv: cop.apiKeyEnv || "GITHUB_TOKEN"
+                        apiKeyEnv: cop.apiKeyEnv || "GITHUB_TOKEN",
+                        apiKey: cop.apiKey || ""
                     },
                     local_llm: {
                         baseUrl: loc.baseUrl || "http://127.0.0.1:8080/v1",
                         model: loc.model || "qwen3.6-35b-vision",
-                        apiKeyEnv: loc.apiKeyEnv || "OPENAI_API_KEY"
+                        apiKeyEnv: loc.apiKeyEnv || "OPENAI_API_KEY",
+                        apiKey: loc.apiKey || ""
                     },
                     ollama: {
                         baseUrl: oll.baseUrl || "http://127.0.0.1:11434/v1",
                         model: oll.model || "qwen2.5vl:7b",
-                        apiKeyEnv: oll.apiKeyEnv || ""
+                        apiKeyEnv: oll.apiKeyEnv || "",
+                        apiKey: oll.apiKey || ""
                     },
                     ovhcloud: {
                         baseUrl: ovh.baseUrl || "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
                         model: ovh.model || "Qwen2.5-VL-72B-Instruct",
-                        apiKeyEnv: ovh.apiKeyEnv || "OVH_API_KEY"
+                        apiKeyEnv: ovh.apiKeyEnv || "OVH_API_KEY",
+                        apiKey: ovh.apiKey || ""
                     },
                     kilo: {
                         baseUrl: kil.baseUrl || "https://api.kilo.ai/api/gateway",
                         model: kil.model || "nvidia/nemotron-3.5-super-vl:free",
-                        apiKeyEnv: kil.apiKeyEnv || "KILO_API_KEY"
+                        apiKeyEnv: kil.apiKeyEnv || "KILO_API_KEY",
+                        apiKey: kil.apiKey || ""
                     },
                     gemini: {
                         baseUrl: gem.baseUrl || "https://generativelanguage.googleapis.com/v1beta",
                         model: gem.model || "gemini-3.8-flash",
-                        apiKeyEnv: gem.apiKeyEnv || "GEMINI_API_KEY"
+                        apiKeyEnv: gem.apiKeyEnv || "GEMINI_API_KEY",
+                        apiKey: gem.apiKey || ""
                     },
                     openrouter: {
                         baseUrl: ort.baseUrl || "https://openrouter.ai/api/v1",
                         model: ort.model || "google/gemma-4-31b-it:free",
-                        apiKeyEnv: ort.apiKeyEnv || "OPENROUTER_API_KEY"
+                        apiKeyEnv: ort.apiKeyEnv || "OPENROUTER_API_KEY",
+                        apiKey: ort.apiKey || ""
                     },
                     groq: {
                         baseUrl: grq.baseUrl || "https://api.groq.com/openai/v1",
                         model: grq.model || "qwen/qwen3.8-27b",
-                        apiKeyEnv: grq.apiKeyEnv || "GROQ_API_KEY"
+                        apiKeyEnv: grq.apiKeyEnv || "GROQ_API_KEY",
+                        apiKey: grq.apiKey || ""
                     },
                     mistral: {
                         baseUrl: mis.baseUrl || "https://api.mistral.ai/v1",
                         model: mis.model || "mistral-medium-3-5",
-                        apiKeyEnv: mis.apiKeyEnv || "MISTRAL_API_KEY"
+                        apiKeyEnv: mis.apiKeyEnv || "MISTRAL_API_KEY",
+                        apiKey: mis.apiKey || ""
                     },
                     openai_compatible: {
                         baseUrl: oai.baseUrl || "http://127.0.0.1:8080/v1",
                         model: oai.model || "qwen3.6-35b-vision",
-                        apiKeyEnv: oai.apiKeyEnv || "OPENAI_API_KEY"
+                        apiKeyEnv: oai.apiKeyEnv || "OPENAI_API_KEY",
+                        apiKey: oai.apiKey || ""
                     }
                 }
             },
@@ -1014,6 +1024,12 @@ FocusScope {
                                 ? "gemini-3.8-flash"
                                 : (root.activeAiProviderKey() === "copilot" ? "gpt-4.1" : "qwen3.6-35b-vision")
                             onEdited: (t) => root.setAiProviderField("model", t)
+                        }
+                        TextSettingRow {
+                            title: root.label("API Key (direct or leave empty for env)", "API klíč (přímo nebo prázdné pro env)")
+                            value: root.activeAiProviderCfg().apiKey || ""
+                            placeholder: root.label("Paste key here or store in api_keys.env...", "Vlož klíč sem nebo do api_keys.env...")
+                            onEdited: (t) => root.setAiProviderField("apiKey", t)
                         }
                         TextSettingRow {
                             title: root.label("API Key Environment Var", "Proměnná prostředí s klíčem")

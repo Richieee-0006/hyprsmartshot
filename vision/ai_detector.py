@@ -154,13 +154,44 @@ def _encode_image_jpeg(image_path, roi=None, max_dim=1280):
     return base64.b64encode(buf.tobytes()).decode("ascii"), crop_w, crop_h, off_x, off_y
 
 
+def _load_env_file_key(env_name):
+    """Reads key=value from ~/.config/hyprsmartshot/api_keys.env or ~/.config/environment.d/*.conf if not in process env."""
+    if not env_name:
+        return ""
+    candidates = [
+        os.path.expanduser("~/.config/hyprsmartshot/api_keys.env"),
+        os.path.expanduser("~/.config/environment.d/90-llm-keys.conf"),
+    ]
+    for path in candidates:
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if not s or s.startswith("#"):
+                        continue
+                    if s.startswith("export "):
+                        s = s[7:].strip()
+                    if "=" in s:
+                        k, v = s.split("=", 1)
+                        if k.strip() == env_name:
+                            return v.strip().strip("\"'")
+        except Exception:
+            pass
+    return ""
+
+
 def _resolve_api_key(prov_cfg):
     direct = str(prov_cfg.get("apiKey", "") or "").strip()
     if direct:
         return direct
     env_name = str(prov_cfg.get("apiKeyEnv", "") or "").strip()
     if env_name:
-        return os.environ.get(env_name, "").strip()
+        val = os.environ.get(env_name, "").strip()
+        if val:
+            return val
+        return _load_env_file_key(env_name)
     return ""
 
 
