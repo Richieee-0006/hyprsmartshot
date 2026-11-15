@@ -55,61 +55,51 @@ _PROVIDER_DEFAULTS = {
         "baseUrl": "http://127.0.0.1:4141/v1",
         "apiKeyEnv": "GITHUB_TOKEN",
         "model": "gpt-4.1",
-        "presets": ["gpt-4.1", "gpt-4o-2024-05-13", "gpt-4-o-preview"],
     },
     "local_llm": {
         "baseUrl": "http://127.0.0.1:8080/v1",
         "apiKeyEnv": "OPENAI_API_KEY",
         "model": "qwen3.6-35b-vision",
-        "presets": ["qwen3.6-35b-vision", "qwen3.8-27b-dense"],
     },
     "ollama": {
         "baseUrl": "http://127.0.0.1:11434/v1",
         "apiKeyEnv": "",
         "model": "qwen2.5vl:7b",
-        "presets": ["qwen2.5vl:7b", "gemma3:12b", "llava:latest"],
     },
     "ovhcloud": {
         "baseUrl": "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
         "apiKeyEnv": "OVH_API_KEY",
         "model": "Qwen2.5-VL-72B-Instruct",
-        "presets": ["Qwen2.5-VL-72B-Instruct", "Qwen3.8-27B", "Qwen3.5-9B", "Qwen3.5-397B-A17B"],
     },
     "kilo": {
         "baseUrl": "https://api.kilo.ai/api/gateway",
         "apiKeyEnv": "KILO_API_KEY",
         "model": "nvidia/nemotron-3.5-super-vl:free",
-        "presets": ["nvidia/nemotron-3.5-super-vl:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"],
     },
     "gemini": {
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "apiKeyEnv": "GEMINI_API_KEY",
         "model": "gemini-3.8-flash",
-        "presets": ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"],
     },
     "openrouter": {
         "baseUrl": "https://openrouter.ai/api/v1",
         "apiKeyEnv": "OPENROUTER_API_KEY",
         "model": "google/gemma-4-31b-it:free",
-        "presets": ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free", "nvidia/nemotron-3.5-super-vl:free"],
     },
     "groq": {
         "baseUrl": "https://api.groq.com/openai/v1",
         "apiKeyEnv": "GROQ_API_KEY",
         "model": "qwen/qwen3.8-27b",
-        "presets": ["qwen/qwen3.8-27b"],
     },
     "mistral": {
         "baseUrl": "https://api.mistral.ai/v1",
         "apiKeyEnv": "MISTRAL_API_KEY",
         "model": "mistral-medium-3-5",
-        "presets": ["mistral-medium-3-5", "mistral-small-2603", "ministral-14b-2512", "ministral-8b-2512"],
     },
     "openai_compatible": {
         "baseUrl": "http://127.0.0.1:8080/v1",
         "apiKeyEnv": "OPENAI_API_KEY",
         "model": "qwen3.6-35b-vision",
-        "presets": ["qwen3.6-35b-vision", "qwen3.8-27b-dense", "gpt-4.1"],
     },
 }
 
@@ -128,7 +118,6 @@ def resolve_provider_config(config, provider_override=None):
         "apiKey": str(user_prov.get("apiKey") or "").strip(),
         "apiKeyEnv": str(user_prov.get("apiKeyEnv") if "apiKeyEnv" in user_prov else defaults["apiKeyEnv"]).strip(),
         "model": str(user_prov.get("model") or defaults["model"]).strip(),
-        "presets": list(defaults.get("presets", [])),
     }
     return provider, merged
 
@@ -569,76 +558,261 @@ def _parse_llama_swap_vision_models():
                 break
             if not in_models:
                 continue
-            m = re.match(r"^  ([a-zA-Z0-9_.-]+):\s*$", line)
+            m = re.match(r'^  ["\']?([a-zA-Z0-9_.-]+)["\']?:\s*(?:#.*)?$', line)
             if m:
-                if cur_model and "--no-mmproj" not in "\n".join(cur_block) and cur_model not in _NON_VISION_MODELS:
+                if cur_model and not re.search(r"--no-mmproj(?![-a-zA-Z])", "\n".join(cur_block)) and cur_model not in _NON_VISION_MODELS:
                     models.append(cur_model)
                 cur_model = m.group(1)
                 cur_block = []
             elif cur_model:
                 cur_block.append(line)
-        if cur_model and "--no-mmproj" not in "\n".join(cur_block) and cur_model not in _NON_VISION_MODELS:
+        if cur_model and not re.search(r"--no-mmproj(?![-a-zA-Z])", "\n".join(cur_block)) and cur_model not in _NON_VISION_MODELS:
             models.append(cur_model)
     except Exception:
         pass
     return models
 
 
-def list_provider_models(config=None, provider_override=None):
-    """Returns available vision models for the specified or active provider."""
-    cfg = config if isinstance(config, dict) else load_config()
-    provider, prov_cfg = resolve_provider_config(cfg, provider_override=provider_override)
-    base_url = prov_cfg["baseUrl"].rstrip("/")
-    presets = list(prov_cfg.get("presets", []))
-    discovered = []
+def _get_models_cache_path():
+    cache_home = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
+    return os.path.join(cache_home, "hyprsmartshot", "models_cache.json")
 
-    if provider == "gemini":
-        models = presets or ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"]
-        return {
-            "ok": True,
-            "provider": provider,
-            "baseUrl": base_url,
-            "activeModel": prov_cfg["model"],
-            "models": models,
-        }
+
+def _load_models_cache():
+    path = _get_models_cache_path()
+    if not os.path.isfile(path):
+        return {"providers": {}}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict) and isinstance(data.get("providers"), dict):
+            return data
+    except Exception:
+        pass
+    return {"providers": {}}
+
+
+def _save_models_cache(cache_data):
+    path = _get_models_cache_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = f"{path}.tmp.{os.getpid()}"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(cache_data, f, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        pass
+
+
+def _parse_free_llm_skill_models(provider):
+    """Dynamically extracts multimodal models from local free-llm-apis skill reference tables if installed."""
+    section_map = {
+        "gemini": ("provider-apis.md", "## Google Gemini"),
+        "mistral": ("provider-apis.md", "## Mistral AI"),
+        "groq": ("inference-providers.md", "## Groq"),
+        "openrouter": ("inference-providers.md", "## OpenRouter"),
+        "ovhcloud": ("inference-providers.md", "## OVHcloud"),
+        "kilo": ("inference-providers.md", "## Kilo Code"),
+    }
+    target = section_map.get(provider)
+    if not target:
+        return []
+    fname, header = target
+    ref_path = os.path.expanduser(f"~/.gemini/config/skills/free-llm-apis/references/{fname}")
+    if not os.path.isfile(ref_path):
+        return []
+    found = []
+    try:
+        with open(ref_path, "r", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        in_sec = False
+        for line in lines:
+            if line.startswith("## "):
+                if line.startswith(header):
+                    in_sec = True
+                    continue
+                elif in_sec:
+                    break
+            if not in_sec or not line.startswith("| `"):
+                continue
+            cols = [c.strip() for c in line.strip("|").split("|")]
+            if len(cols) >= 3:
+                mid = cols[0].strip("` ").strip()
+                modality = cols[2].lower()
+                if mid and any(k in modality for k in ("image", "vision", "multimodal")):
+                    found.append(mid)
+    except Exception:
+        pass
+    return found
+
+
+def _fetch_live_provider_models(provider, prov_cfg):
+    """Queries live provider /models API and returns discovered vision-capable model IDs."""
+    base_url = prov_cfg["baseUrl"].rstrip("/")
+    discovered = []
+    key = _resolve_api_key(prov_cfg)
+
+    if provider == "gemini" and not base_url.endswith("/openai"):
+        if key:
+            try:
+                resp = requests.get(f"{base_url}/models", params={"key": key}, timeout=3.5)
+                if resp.ok:
+                    for item in resp.json().get("models", []):
+                        if not isinstance(item, dict):
+                            continue
+                        methods = item.get("supportedGenerationMethods") or []
+                        name = str(item.get("name", "")).replace("models/", "").strip()
+                        low = name.lower()
+                        if (
+                            name
+                            and "generateContent" in methods
+                            and not any(x in low for x in ("embedding", "aqa", "imagen", "veo", "tts", " attributed"))
+                        ):
+                            discovered.append(name)
+            except Exception:
+                pass
+        for sm in _parse_free_llm_skill_models("gemini"):
+            if sm not in discovered:
+                discovered.append(sm)
+        return discovered
 
     try:
         headers = {}
-        key = _resolve_api_key(prov_cfg)
         if key:
             headers["Authorization"] = f"Bearer {key}"
-        resp = requests.get(f"{base_url}/models", headers=headers, timeout=2.0)
+        elif "kilo.ai" in base_url:
+            headers["Authorization"] = "Bearer anonymous"
+        resp = requests.get(f"{base_url}/models", headers=headers, timeout=3.5)
         if resp.ok:
             data = resp.json().get("data", [])
-            ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
             if ":4141" in base_url or provider == "copilot":
-                discovered = [m for m in ids if m in _COPILOT_VISION_ALLOWLIST]
+                ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
+                allow = [m for m in ids if m in _COPILOT_VISION_ALLOWLIST]
+                other = [
+                    m for m in ids
+                    if m not in allow
+                    and m not in _NON_VISION_MODELS
+                    and not m.startswith(("text-embedding", "copilot-search"))
+                ]
+                discovered = allow + other
             elif ":8080" in base_url or provider == "local_llm":
-                yaml_vision = set(_parse_llama_swap_vision_models())
+                ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
+                yaml_vision = _parse_llama_swap_vision_models()
                 if yaml_vision:
                     discovered = [m for m in ids if m in yaml_vision]
+                    for ym in yaml_vision:
+                        if ym not in discovered:
+                            discovered.append(ym)
                 else:
                     discovered = [m for m in ids if m not in _NON_VISION_MODELS]
-            else:
+            elif "openrouter.ai" in base_url or "kilo.ai" in base_url or provider in ("openrouter", "kilo"):
+                free_vis = []
+                paid_vis = []
+                for m in data:
+                    if not isinstance(m, dict) or not m.get("id"):
+                        continue
+                    mid = str(m["id"])
+                    arch = m.get("architecture") or {}
+                    in_mod = arch.get("input_modalities") or []
+                    out_mod = arch.get("output_modalities") or []
+                    mod_str = str(arch.get("modality") or "").lower()
+                    has_image = ("image" in in_mod) or ("image" in mod_str)
+                    has_text_out = (not out_mod) or ("text" in out_mod)
+                    if not (has_image and has_text_out):
+                        continue
+                    if any(x in mid.lower() for x in ("lyria", "whisper", "tts", "embedding")):
+                        continue
+                    pricing = m.get("pricing") or {}
+                    is_free = (
+                        m.get("isFree") is True
+                        or str(pricing.get("prompt", "")) == "0"
+                        or mid.endswith(":free")
+                    )
+                    if is_free:
+                        free_vis.append(mid)
+                    else:
+                        paid_vis.append(mid)
+                discovered = free_vis + paid_vis
+            elif "ovh.net" in base_url or provider == "ovhcloud":
+                ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
+                non_vis_prefixes = ("whisper", "nvr-tts", "bge-", "stable-diffusion", "gpt-oss", "Meta-Llama-3_3")
                 discovered = [
                     m for m in ids
-                    if m not in _NON_VISION_MODELS and not m.startswith(("text-embedding", "whisper", "tts"))
+                    if not m.startswith(non_vis_prefixes)
+                    and "Embedding" not in m
+                    and "Guard" not in m
+                ]
+            else:
+                ids = [str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id")]
+                discovered = [
+                    m for m in ids
+                    if m not in _NON_VISION_MODELS
+                    and not m.startswith(("text-embedding", "whisper", "tts", "dall-e"))
                 ]
     except Exception:
         if ":8080" in base_url or provider == "local_llm":
             discovered = _parse_llama_swap_vision_models()
 
-    merged_models = []
-    for m in discovered + presets:
-        if m and m not in merged_models:
-            merged_models.append(m)
+    if not discovered:
+        discovered = _parse_free_llm_skill_models(provider)
+
+    return discovered
+
+
+def list_provider_models(config=None, provider_override=None, search_query="", force_refresh=False):
+    """Returns cached or live-discovered vision models for the specified provider, optionally filtered by search_query."""
+    cfg = config if isinstance(config, dict) else load_config()
+    provider, prov_cfg = resolve_provider_config(cfg, provider_override=provider_override)
+    base_url = prov_cfg["baseUrl"].rstrip("/")
+    is_local = ("127.0.0.1" in base_url) or ("localhost" in base_url)
+    ttl = 300 if is_local else 86400
+
+    cache = _load_models_cache()
+    prov_entry = cache.get("providers", {}).get(provider, {})
+    now = int(time.time())
+    cached_models = prov_entry.get("models", []) if isinstance(prov_entry, dict) else []
+    cached_url = prov_entry.get("baseUrl", "") if isinstance(prov_entry, dict) else ""
+    cached_at = int(prov_entry.get("updatedAt", 0) or 0) if isinstance(prov_entry, dict) else 0
+
+    from_cache = False
+    if (
+        not force_refresh
+        and cached_models
+        and cached_url == base_url
+        and (now - cached_at) < ttl
+    ):
+        models = list(cached_models)
+        from_cache = True
+    else:
+        live = _fetch_live_provider_models(provider, prov_cfg)
+        models = live if live else list(cached_models)
+        if models:
+            cache.setdefault("providers", {})[provider] = {
+                "baseUrl": base_url,
+                "updatedAt": now,
+                "models": models[:120],
+            }
+            _save_models_cache(cache)
+
+    active_model = prov_cfg["model"]
+    if active_model and active_model not in models:
+        models.insert(0, active_model)
+
+    q = str(search_query or "").strip().lower()
+    if q:
+        tokens = [t for t in q.split() if t]
+        filtered = [m for m in models if all(tok in m.lower() for tok in tokens)]
+    else:
+        filtered = models
 
     return {
         "ok": True,
         "provider": provider,
         "baseUrl": base_url,
-        "activeModel": prov_cfg["model"],
-        "models": merged_models[:16],
+        "activeModel": active_model,
+        "cached": from_cache,
+        "totalCached": len(models),
+        "models": filtered[:24],
     }
 
 
@@ -700,15 +874,25 @@ def main():
     parser.add_argument("--config", default=None, help="Explicit config JSON path")
     parser.add_argument("--check", action="store_true", help="Inspect provider status")
     parser.add_argument("--list-models", action="store_true", help="List available vision models for provider")
+    parser.add_argument("--refresh-all-models", action="store_true", help="Refresh cached models for all providers")
     parser.add_argument("--provider", default=None, help="Optional provider override for --list-models / --check")
+    parser.add_argument("--search", default="", help="Optional search query for --list-models")
+    parser.add_argument("--refresh", action="store_true", help="Force live refresh of model cache")
     args = parser.parse_args()
 
     cfg = load_config(args.config)
     if args.provider and isinstance(cfg.get("ai"), dict):
         cfg["ai"]["provider"] = args.provider
     try:
+        if args.refresh_all_models:
+            summary = {}
+            for p in _PROVIDER_DEFAULTS:
+                res = list_provider_models(cfg, provider_override=p, force_refresh=True)
+                summary[p] = len(res.get("models", []))
+            print(json.dumps({"ok": True, "cachePath": _get_models_cache_path(), "counts": summary}))
+            return 0
         if args.list_models:
-            print(json.dumps(list_provider_models(cfg, provider_override=args.provider)))
+            print(json.dumps(list_provider_models(cfg, provider_override=args.provider, search_query=args.search, force_refresh=args.refresh)))
             return 0
         if args.check:
             print(json.dumps(check_ai_status(cfg)))

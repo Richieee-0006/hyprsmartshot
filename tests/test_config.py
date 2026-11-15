@@ -503,9 +503,18 @@ class TestConfiguration(unittest.TestCase):
             self.assertEqual(resolved_name, prov_key)
             self.assertEqual(resolved_cfg["model"], exp_model)
 
-        gem_list = ai_detector.list_provider_models(cfg, provider_override="gemini")
-        self.assertIn("gemini-3.8-flash", gem_list["models"])
-        self.assertIn("gemma-4-31b-it", gem_list["models"])
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as tmp_cache:
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": tmp_cache}):
+                gem_list = ai_detector.list_provider_models(cfg, provider_override="gemini", force_refresh=True)
+                self.assertFalse(gem_list["cached"])
+                self.assertIn("gemini-3.8-flash", gem_list["models"])
+                self.assertIn("gemma-4-31b-it", gem_list["models"])
+
+                gem_cached = ai_detector.list_provider_models(cfg, provider_override="gemini", search_query="gemma 31b")
+                self.assertTrue(gem_cached["cached"])
+                self.assertEqual(gem_cached["models"], ["gemma-4-31b-it"])
+                self.assertTrue(os.path.isfile(os.path.join(tmp_cache, "hyprsmartshot", "models_cache.json")))
 
         # Non-vision model filtering on :8080 and :4141
         self.assertEqual(

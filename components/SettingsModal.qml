@@ -1,4 +1,6 @@
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 FocusScope {
     id: root
@@ -6,6 +8,8 @@ FocusScope {
     property bool open: false
     property string activeTab: "theme" // "theme" | "detection" | "ai" | "capture"
     property string statusMessage: ""
+    property string modelSearchQuery: ""
+    property var modelsCache: ({})
     property var draft: ({})
 
     signal closeRequested()
@@ -153,21 +157,81 @@ FocusScope {
         root.statusMessage = "";
     }
 
+    readonly property string _cacheHome: Quickshell.env("XDG_CACHE_HOME") || ((Quickshell.env("HOME") || "/tmp") + "/.cache")
+    readonly property string modelsCachePath: _cacheHome + "/hyprsmartshot/models_cache.json"
+
+    FileView {
+        id: modelsCacheFileView
+        path: root.modelsCachePath
+        watchChanges: true
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const raw = text();
+                if (!raw || raw.trim() === "") return;
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed.providers === "object") {
+                    root.modelsCache = parsed.providers;
+                }
+            } catch (e) {}
+        }
+    }
+
+    Timer {
+        id: cacheReloadTimer
+        interval: 650
+        repeat: false
+        onTriggered: modelsCacheFileView.reload()
+    }
+
     function activeAiProviderKey() {
         return (root.draft && root.draft.ai && root.draft.ai.provider) || "openai_compatible";
     }
 
-    function providerModelPresets(prov) {
-        if (prov === "copilot") return ["gpt-4.1", "gpt-4o-2024-05-13", "gpt-4-o-preview"];
-        if (prov === "local_llm") return ["qwen3.6-35b-vision", "qwen3.8-27b-dense"];
-        if (prov === "ollama") return ["qwen2.5vl:7b", "gemma3:12b", "llava:latest"];
-        if (prov === "ovhcloud") return ["Qwen2.5-VL-72B-Instruct", "Qwen3.8-27B", "Qwen3.5-9B", "Qwen3.5-397B-A17B"];
-        if (prov === "kilo") return ["nvidia/nemotron-3.5-super-vl:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"];
-        if (prov === "gemini") return ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"];
-        if (prov === "openrouter") return ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free", "nvidia/nemotron-3.5-super-vl:free"];
-        if (prov === "groq") return ["qwen/qwen3.8-27b"];
-        if (prov === "mistral") return ["mistral-medium-3-5", "mistral-small-2603", "ministral-14b-2512", "ministral-8b-2512"];
-        return ["qwen3.6-35b-vision", "qwen3.8-27b-dense", "gpt-4.1"];
+    function refreshProviderModels(forceRefresh) {
+        const prov = activeAiProviderKey();
+        const appDir = Quickshell.env("SMARTSHOT_DIR") || "/usr/share/hyprsmartshot";
+        const pyBin = Quickshell.env("SMARTSHOT_PYTHON") || (appDir + "/.venv/bin/python");
+        const scriptPath = appDir + "/vision/ai_detector.py";
+        const args = [pyBin, scriptPath, "--list-models", "--provider", prov];
+        if (forceRefresh) args.push("--refresh");
+        Quickshell.execDetached(args);
+        cacheReloadTimer.restart();
+    }
+
+    function cachedModelsCount(prov) {
+        const entry = (root.modelsCache && root.modelsCache[prov]) ? root.modelsCache[prov] : null;
+        const arr = (entry && Array.isArray(entry.models)) ? entry.models : [];
+        return arr.length;
+    }
+
+    function cachedModelsForProvider(prov, query) {
+        const entry = (root.modelsCache && root.modelsCache[prov]) ? root.modelsCache[prov] : null;
+        const rawList = (entry && Array.isArray(entry.models)) ? entry.models : [];
+        const out = [];
+        const active = root.activeAiProviderCfg().model || "";
+        if (active) out.push(active);
+        for (let i = 0; i < rawList.length; i++) {
+            const m = String(rawList[i] || "").trim();
+            if (m && out.indexOf(m) < 0) out.push(m);
+        }
+        const q = String(query || "").trim().toLowerCase();
+        if (!q) return out.slice(0, 14);
+        const tokens = q.split(/\s+/).filter(Boolean);
+        const filtered = [];
+        for (let i = 0; i < out.length; i++) {
+            const low = out[i].toLowerCase();
+            let match = true;
+            for (let t = 0; t < tokens.length; t++) {
+                if (low.indexOf(tokens[t]) < 0) {
+                    match = false;
+                    break;
+                }
+            }
+            if (match) filtered.push(out[i]);
+        }
+        return filtered.slice(0, 14);
     }
 
     function activeAiProviderCfg() {
@@ -212,13 +276,21 @@ FocusScope {
     onOpenChanged: {
         if (open) {
             loadDraftFromConfig();
+            modelsCacheFileView.reload();
+            if (cachedModelsCount(activeAiProviderKey()) === 0) {
+                refreshProviderModels(false);
+            }
             forceActiveFocus();
         }
     }
 
     Component.onCompleted: {
+        modelsCacheFileView.reload();
         if (open) {
             loadDraftFromConfig();
+            if (cachedModelsCount(activeAiProviderKey()) === 0) {
+                refreshProviderModels(false);
+            }
             forceActiveFocus();
         }
     }
@@ -822,12 +894,108 @@ FocusScope {
                             current: (root.draft.ai && root.draft.ai.provider) || "openai_compatible"
                             choices: ["copilot", "local_llm", "ollama", "ovhcloud", "kilo", "gemini", "openrouter", "groq", "mistral", "openai_compatible"]
                             wrapChips: true
-                            onChosen: (v) => root.setNested("ai", "provider", v)
+                            onChosen: (v) => {
+                                root.setNested("ai", "provider", v);
+                                if (root.cachedModelsCount(v) === 0) {
+                                    root.refreshProviderModels(false);
+                                }
+                            }
+                        }
+                        Rectangle {
+                            width: sectionCol.width
+                            height: 58
+                            radius: 8
+                            color: Theme.surfaceSoft
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.leftMargin: 12
+                                anchors.rightMargin: 10
+                                anchors.topMargin: 6
+                                spacing: 4
+
+                                Row {
+                                    width: parent.width
+                                    height: 20
+                                    Text {
+                                        width: parent.width - refreshBtn.width - 8
+                                        text: root.label(
+                                            "Search Cached Models (" + root.cachedModelsCount(root.activeAiProviderKey()) + " in cache)",
+                                            "Hledat modely v cache (" + root.cachedModelsCount(root.activeAiProviderKey()) + " v cache)"
+                                        )
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        color: Theme.textSubtle
+                                        elide: Text.ElideRight
+                                        anchors.verticalCenter: parent.verticalCenter
+                                    }
+                                    Rectangle {
+                                        id: refreshBtn
+                                        height: 20
+                                        width: refreshTxt.implicitWidth + 14
+                                        radius: 5
+                                        color: refreshMouse.containsMouse ? Theme.surfaceHover : Theme.barBackground
+                                        border.color: Theme.barBorder
+                                        border.width: 1
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        MouseArea {
+                                            id: refreshMouse
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.refreshProviderModels(true)
+                                        }
+                                        Text {
+                                            id: refreshTxt
+                                            anchors.centerIn: parent
+                                            text: "↻ " + root.label("Refresh Cache", "Obnovit cache")
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 10
+                                            color: Theme.text
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: parent.width
+                                    height: 24
+                                    radius: 5
+                                    color: Theme.barBackground
+                                    border.color: searchInput.activeFocus ? Theme.accent : Theme.barBorder
+                                    border.width: 1
+
+                                    TextInput {
+                                        id: searchInput
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        anchors.rightMargin: 8
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        text: root.modelSearchQuery
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: 11
+                                        color: Theme.text
+                                        selectByMouse: true
+                                        selectionColor: Theme.accent
+                                        selectedTextColor: Theme.accentText
+                                        clip: true
+                                        onTextEdited: root.modelSearchQuery = text
+
+                                        Text {
+                                            visible: searchInput.text.length === 0 && !searchInput.activeFocus
+                                            text: root.label("Filter models (e.g. flash, qwen, 4.1, free, gemma)...", "Filtrovat modely (např. flash, qwen, 4.1, free, gemma)...")
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            color: Theme.textMuted
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+                            }
                         }
                         ChoiceSettingRow {
-                            title: root.label("Model Preset", "Předvolba modelu")
+                            title: root.label("Discovered / Cached Models", "Nalezené modely z cache")
                             current: root.activeAiProviderCfg().model || ""
-                            choices: root.providerModelPresets(root.activeAiProviderKey())
+                            choices: root.cachedModelsForProvider(root.activeAiProviderKey(), root.modelSearchQuery)
                             wrapChips: true
                             onChosen: (v) => root.setAiProviderField("model", v)
                         }
@@ -843,7 +1011,7 @@ FocusScope {
                             title: root.label("Vision Model Name", "Název vision modelu")
                             value: root.activeAiProviderCfg().model || ""
                             placeholder: root.activeAiProviderKey() === "gemini"
-                                ? "gemini-2.5-flash"
+                                ? "gemini-3.8-flash"
                                 : (root.activeAiProviderKey() === "copilot" ? "gpt-4.1" : "qwen3.6-35b-vision")
                             onEdited: (t) => root.setAiProviderField("model", t)
                         }
