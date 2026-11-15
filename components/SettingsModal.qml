@@ -41,8 +41,16 @@ FocusScope {
         const c = (typeof Config !== "undefined" && Config && Config.capture) ? Config.capture : {};
 
         const aProvs = (a && a.providers && typeof a.providers === "object") ? a.providers : {};
-        const oai = aProvs.openai_compatible || {};
+        const cop = aProvs.copilot || {};
+        const loc = aProvs.local_llm || {};
+        const oll = aProvs.ollama || {};
+        const ovh = aProvs.ovhcloud || {};
+        const kil = aProvs.kilo || {};
         const gem = aProvs.gemini || {};
+        const ort = aProvs.openrouter || {};
+        const grq = aProvs.groq || {};
+        const mis = aProvs.mistral || {};
+        const oai = aProvs.openai_compatible || {};
 
         root.draft = {
             language: (Config && Config.language) || "en",
@@ -78,15 +86,55 @@ FocusScope {
                 provider: a.provider || "openai_compatible",
                 prompt: a.prompt || "",
                 providers: {
-                    openai_compatible: {
-                        baseUrl: oai.baseUrl || "http://127.0.0.1:8080/v1",
-                        model: oai.model || "",
-                        apiKeyEnv: oai.apiKeyEnv || "OPENAI_API_KEY"
+                    copilot: {
+                        baseUrl: cop.baseUrl || "http://127.0.0.1:4141/v1",
+                        model: cop.model || "gpt-4.1",
+                        apiKeyEnv: cop.apiKeyEnv || "GITHUB_TOKEN"
+                    },
+                    local_llm: {
+                        baseUrl: loc.baseUrl || "http://127.0.0.1:8080/v1",
+                        model: loc.model || "qwen3.6-35b-vision",
+                        apiKeyEnv: loc.apiKeyEnv || "OPENAI_API_KEY"
+                    },
+                    ollama: {
+                        baseUrl: oll.baseUrl || "http://127.0.0.1:11434/v1",
+                        model: oll.model || "qwen2.5vl:7b",
+                        apiKeyEnv: oll.apiKeyEnv || ""
+                    },
+                    ovhcloud: {
+                        baseUrl: ovh.baseUrl || "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+                        model: ovh.model || "Qwen2.5-VL-72B-Instruct",
+                        apiKeyEnv: ovh.apiKeyEnv || "OVH_API_KEY"
+                    },
+                    kilo: {
+                        baseUrl: kil.baseUrl || "https://api.kilo.ai/api/gateway",
+                        model: kil.model || "nvidia/nemotron-3.5-super-vl:free",
+                        apiKeyEnv: kil.apiKeyEnv || "KILO_API_KEY"
                     },
                     gemini: {
                         baseUrl: gem.baseUrl || "https://generativelanguage.googleapis.com/v1beta",
-                        model: gem.model || "gemini-2.5-flash",
+                        model: gem.model || "gemini-3.8-flash",
                         apiKeyEnv: gem.apiKeyEnv || "GEMINI_API_KEY"
+                    },
+                    openrouter: {
+                        baseUrl: ort.baseUrl || "https://openrouter.ai/api/v1",
+                        model: ort.model || "google/gemma-4-31b-it:free",
+                        apiKeyEnv: ort.apiKeyEnv || "OPENROUTER_API_KEY"
+                    },
+                    groq: {
+                        baseUrl: grq.baseUrl || "https://api.groq.com/openai/v1",
+                        model: grq.model || "qwen/qwen3.8-27b",
+                        apiKeyEnv: grq.apiKeyEnv || "GROQ_API_KEY"
+                    },
+                    mistral: {
+                        baseUrl: mis.baseUrl || "https://api.mistral.ai/v1",
+                        model: mis.model || "mistral-medium-3-5",
+                        apiKeyEnv: mis.apiKeyEnv || "MISTRAL_API_KEY"
+                    },
+                    openai_compatible: {
+                        baseUrl: oai.baseUrl || "http://127.0.0.1:8080/v1",
+                        model: oai.model || "qwen3.6-35b-vision",
+                        apiKeyEnv: oai.apiKeyEnv || "OPENAI_API_KEY"
                     }
                 }
             },
@@ -107,6 +155,19 @@ FocusScope {
 
     function activeAiProviderKey() {
         return (root.draft && root.draft.ai && root.draft.ai.provider) || "openai_compatible";
+    }
+
+    function providerModelPresets(prov) {
+        if (prov === "copilot") return ["gpt-4.1", "gpt-4o-2024-05-13", "gpt-4-o-preview"];
+        if (prov === "local_llm") return ["qwen3.6-35b-vision", "qwen3.8-27b-dense"];
+        if (prov === "ollama") return ["qwen2.5vl:7b", "gemma3:12b", "llava:latest"];
+        if (prov === "ovhcloud") return ["Qwen2.5-VL-72B-Instruct", "Qwen3.8-27B", "Qwen3.5-9B", "Qwen3.5-397B-A17B"];
+        if (prov === "kilo") return ["nvidia/nemotron-3.5-super-vl:free", "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"];
+        if (prov === "gemini") return ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemma-4-31b-it", "gemma-4-26b-a4b-it"];
+        if (prov === "openrouter") return ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free", "nvidia/nemotron-3.5-super-vl:free"];
+        if (prov === "groq") return ["qwen/qwen3.8-27b"];
+        if (prov === "mistral") return ["mistral-medium-3-5", "mistral-small-2603", "ministral-14b-2512", "ministral-8b-2512"];
+        return ["qwen3.6-35b-vision", "qwen3.8-27b-dense", "gpt-4.1"];
     }
 
     function activeAiProviderCfg() {
@@ -372,14 +433,16 @@ FocusScope {
                         property string title: ""
                         property string current: ""
                         property var choices: []
+                        property bool wrapChips: false
                         signal chosen(string value)
 
                         width: sectionCol.width
-                        height: 38
+                        height: wrapChips ? (chipWrapCol.implicitHeight + 16) : 38
                         radius: 8
                         color: Theme.surfaceSoft
 
                         Row {
+                            visible: !wrapChips
                             anchors.fill: parent
                             anchors.leftMargin: 12
                             anchors.rightMargin: 10
@@ -415,6 +478,56 @@ FocusScope {
                                         }
                                         Text {
                                             id: choiceTxt
+                                            anchors.centerIn: parent
+                                            text: modelData
+                                            font.family: Theme.fontFamily
+                                            font.pixelSize: 11
+                                            font.weight: sel ? Font.DemiBold : Font.Normal
+                                            color: sel ? Theme.accentText : Theme.text
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Column {
+                            id: chipWrapCol
+                            visible: wrapChips
+                            x: 12
+                            y: 8
+                            width: parent.width - 22
+                            spacing: 6
+
+                            Text {
+                                width: parent.width
+                                text: title
+                                font.family: Theme.fontFamily
+                                font.pixelSize: 11
+                                color: Theme.textSubtle
+                                elide: Text.ElideRight
+                            }
+
+                            Flow {
+                                width: parent.width
+                                spacing: 5
+                                Repeater {
+                                    model: choices
+                                    Rectangle {
+                                        height: 24
+                                        width: wrapChoiceTxt.implicitWidth + 14
+                                        radius: 6
+                                        readonly property bool sel: current === modelData
+                                        color: sel ? Theme.accent : Theme.barBackground
+                                        border.color: sel ? Theme.accent : Theme.barBorder
+                                        border.width: 1
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: chosen(modelData)
+                                        }
+                                        Text {
+                                            id: wrapChoiceTxt
                                             anchors.centerIn: parent
                                             text: modelData
                                             font.family: Theme.fontFamily
@@ -705,21 +818,33 @@ FocusScope {
                             onChosen: (v) => root.setNested("ai", "trigger", v)
                         }
                         ChoiceSettingRow {
-                            title: root.label("AI Provider Protocol", "Protokol poskytovatele AI")
+                            title: root.label("AI Provider (Local & Free Cloud)", "Poskytovatel AI (Lokální i Free Cloud)")
                             current: (root.draft.ai && root.draft.ai.provider) || "openai_compatible"
-                            choices: ["openai_compatible", "gemini"]
+                            choices: ["copilot", "local_llm", "ollama", "ovhcloud", "kilo", "gemini", "openrouter", "groq", "mistral", "openai_compatible"]
+                            wrapChips: true
                             onChosen: (v) => root.setNested("ai", "provider", v)
+                        }
+                        ChoiceSettingRow {
+                            title: root.label("Model Preset", "Předvolba modelu")
+                            current: root.activeAiProviderCfg().model || ""
+                            choices: root.providerModelPresets(root.activeAiProviderKey())
+                            wrapChips: true
+                            onChosen: (v) => root.setAiProviderField("model", v)
                         }
                         TextSettingRow {
                             title: root.label("Endpoint Base URL", "Adresa API endpointu")
                             value: root.activeAiProviderCfg().baseUrl || ""
-                            placeholder: root.activeAiProviderKey() === "gemini" ? "https://generativelanguage.googleapis.com/v1beta" : "http://127.0.0.1:8080/v1"
+                            placeholder: root.activeAiProviderKey() === "gemini"
+                                ? "https://generativelanguage.googleapis.com/v1beta"
+                                : (root.activeAiProviderKey() === "copilot" ? "http://127.0.0.1:4141/v1" : "http://127.0.0.1:8080/v1")
                             onEdited: (t) => root.setAiProviderField("baseUrl", t)
                         }
                         TextSettingRow {
                             title: root.label("Vision Model Name", "Název vision modelu")
                             value: root.activeAiProviderCfg().model || ""
-                            placeholder: root.activeAiProviderKey() === "gemini" ? "gemini-2.5-flash" : "qwen2.5-vl / custom-model"
+                            placeholder: root.activeAiProviderKey() === "gemini"
+                                ? "gemini-2.5-flash"
+                                : (root.activeAiProviderKey() === "copilot" ? "gpt-4.1" : "qwen3.6-35b-vision")
                             onEdited: (t) => root.setAiProviderField("model", t)
                         }
                         TextSettingRow {

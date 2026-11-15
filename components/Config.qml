@@ -119,21 +119,69 @@ Singleton {
         enabled: false,
         trigger: "manual",
         provider: "openai_compatible",
-        timeoutMs: 15000,
-        maxImageDim: 1280,
+        timeoutMs: 35000,
+        maxImageDim: 960,
         defaultAction: "ocr",
-        prompt: "Detect interactive UI regions, panels, dialogs, buttons, inputs, and readable text blocks. Return strict JSON array of objects: [{\"label\":\"...\",\"type\":\"panel|button|input|slot|text_block|text|detected\",\"bbox_2d\":[ymin,xmin,ymax,xmax],\"confidence\":0.9}] using normalized coordinates 0..1000.",
+        prompt: "Detect up to 12 key UI regions (windows, panels, sidebar, dialogs, buttons, inputs, dock, text blocks). Coordinates are normalized 0..1000 where x1,x2 are horizontal (left=0, right=1000) and y1,y2 are vertical (top=0, bottom=1000). Return strict JSON array: [{\"label\":\"...\",\"type\":\"panel|button|input|slot|text_block\",\"x1\":0,\"y1\":0,\"x2\":500,\"y2\":900,\"confidence\":0.9}]",
         providers: {
-            openai_compatible: {
+            copilot: {
+                baseUrl: "http://127.0.0.1:4141/v1",
+                model: "gpt-4.1",
+                apiKeyEnv: "GITHUB_TOKEN",
+                apiKey: ""
+            },
+            local_llm: {
                 baseUrl: "http://127.0.0.1:8080/v1",
-                model: "",
+                model: "qwen3.6-35b-vision",
                 apiKeyEnv: "OPENAI_API_KEY",
+                apiKey: ""
+            },
+            ollama: {
+                baseUrl: "http://127.0.0.1:11434/v1",
+                model: "qwen2.5vl:7b",
+                apiKeyEnv: "",
+                apiKey: ""
+            },
+            ovhcloud: {
+                baseUrl: "https://oai.endpoints.kepler.ai.cloud.ovh.net/v1",
+                model: "Qwen2.5-VL-72B-Instruct",
+                apiKeyEnv: "OVH_API_KEY",
+                apiKey: ""
+            },
+            kilo: {
+                baseUrl: "https://api.kilo.ai/api/gateway",
+                model: "nvidia/nemotron-3.5-super-vl:free",
+                apiKeyEnv: "KILO_API_KEY",
                 apiKey: ""
             },
             gemini: {
                 baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-                model: "gemini-2.5-flash",
+                model: "gemini-3.8-flash",
                 apiKeyEnv: "GEMINI_API_KEY",
+                apiKey: ""
+            },
+            openrouter: {
+                baseUrl: "https://openrouter.ai/api/v1",
+                model: "google/gemma-4-31b-it:free",
+                apiKeyEnv: "OPENROUTER_API_KEY",
+                apiKey: ""
+            },
+            groq: {
+                baseUrl: "https://api.groq.com/openai/v1",
+                model: "qwen/qwen3.8-27b",
+                apiKeyEnv: "GROQ_API_KEY",
+                apiKey: ""
+            },
+            mistral: {
+                baseUrl: "https://api.mistral.ai/v1",
+                model: "mistral-medium-3-5",
+                apiKeyEnv: "MISTRAL_API_KEY",
+                apiKey: ""
+            },
+            openai_compatible: {
+                baseUrl: "http://127.0.0.1:8080/v1",
+                model: "qwen3.6-35b-vision",
+                apiKeyEnv: "OPENAI_API_KEY",
                 apiKey: ""
             }
         }

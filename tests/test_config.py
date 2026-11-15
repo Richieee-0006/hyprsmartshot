@@ -476,6 +476,68 @@ class TestConfiguration(unittest.TestCase):
                 if os.path.exists(tf_path):
                     os.remove(tf_path)
 
+    def test_ai_providers_free_models_and_bbox_extraction(self):
+        sys.path.insert(0, os.path.join(REPO_DIR, "vision"))
+        import ai_detector
+
+        with open(CONFIG_JSON, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+
+        expected_models = {
+            "copilot": "gpt-4.1",
+            "local_llm": "qwen3.6-35b-vision",
+            "ollama": "qwen2.5vl:7b",
+            "ovhcloud": "Qwen2.5-VL-72B-Instruct",
+            "kilo": "nvidia/nemotron-3.5-super-vl:free",
+            "gemini": "gemini-3.8-flash",
+            "openrouter": "google/gemma-4-31b-it:free",
+            "groq": "qwen/qwen3.8-27b",
+            "mistral": "mistral-medium-3-5",
+            "openai_compatible": "qwen3.6-35b-vision",
+        }
+        provs = cfg["ai"]["providers"]
+        for prov_key, exp_model in expected_models.items():
+            self.assertIn(prov_key, provs, f"Missing provider '{prov_key}' in default config.json")
+            self.assertEqual(provs[prov_key]["model"], exp_model)
+            resolved_name, resolved_cfg = ai_detector.resolve_provider_config(cfg, provider_override=prov_key)
+            self.assertEqual(resolved_name, prov_key)
+            self.assertEqual(resolved_cfg["model"], exp_model)
+
+        gem_list = ai_detector.list_provider_models(cfg, provider_override="gemini")
+        self.assertIn("gemini-3.8-flash", gem_list["models"])
+        self.assertIn("gemma-4-31b-it", gem_list["models"])
+
+        # Non-vision model filtering on :8080 and :4141
+        self.assertEqual(
+            ai_detector._resolve_openai_model("http://127.0.0.1:8080/v1", {"model": "qwen3.6-35b-mtp"}, 1.0),
+            "qwen3.6-35b-vision",
+        )
+        self.assertEqual(
+            ai_detector._resolve_openai_model("http://127.0.0.1:4141/v1", {"model": "gpt-4o"}, 1.0),
+            "gpt-4.1",
+        )
+
+        # Coordinate extraction for x1/y1/x2/y2 and snapping to CV edges
+        raw = json.dumps([
+            {"label": "Terminal", "type": "window", "x1": 0, "y1": 0, "x2": 500, "y2": 1000, "confidence": 0.94},
+            {"label": "Search", "type": "search", "box": [500, 100, 750, 200], "confidence": 0.88},
+        ])
+        boxes = ai_detector.extract_ai_boxes(raw, 1920, 1080)
+        self.assertEqual(len(boxes), 2)
+        self.assertEqual((boxes[0]["x"], boxes[0]["y"], boxes[0]["w"], boxes[0]["h"]), (0, 0, 960, 1080))
+        self.assertEqual(boxes[0]["type"], "panel")
+        self.assertEqual(boxes[1]["type"], "input")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as cv_tf:
+            json.dump({"boxes": [{"x": 12, "y": 8, "w": 948, "h": 1064}]}, cv_tf)
+            cv_path = cv_tf.name
+        try:
+            snapped = ai_detector._snap_ai_boxes_to_cv(boxes, cv_boxes_path=cv_path, tol=20)
+            self.assertEqual((snapped[0]["x"], snapped[0]["y"], snapped[0]["w"], snapped[0]["h"]), (12, 8, 948, 1064))
+        finally:
+            if os.path.exists(cv_path):
+                os.remove(cv_path)
+
 
 if __name__ == "__main__":
     unittest.main()
