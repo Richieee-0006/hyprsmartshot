@@ -1,6 +1,6 @@
 import QtQuick
 
-Item {
+FocusScope {
     id: root
 
     property bool open: false
@@ -12,11 +12,19 @@ Item {
     signal applied(var patch)
 
     visible: open
+    focus: open
     anchors.fill: parent
     z: 80
 
+    Keys.onEscapePressed: (event) => {
+        event.accepted = true;
+        root.closeRequested();
+    }
+
     function isCzech() {
-        const lang = (typeof Config !== "undefined" && Config && Config.language) ? String(Config.language) : "en";
+        const lang = (typeof I18n !== "undefined" && I18n && I18n.language)
+            ? String(I18n.language)
+            : ((typeof Config !== "undefined" && Config && Config.language) ? String(Config.language) : "en");
         return lang.toLowerCase().indexOf("cs") === 0;
     }
 
@@ -117,6 +125,7 @@ Item {
         if (!copy.ai.providers[prov]) copy.ai.providers[prov] = {};
         copy.ai.providers[prov][key] = value;
         root.draft = copy;
+        root.statusMessage = "";
     }
 
     function setNested(section, key, value) {
@@ -128,6 +137,7 @@ Item {
             copy[key] = value;
         }
         root.draft = copy;
+        root.statusMessage = "";
     }
 
     function applyAndSave() {
@@ -139,22 +149,32 @@ Item {
     }
 
     onOpenChanged: {
-        if (open) loadDraftFromConfig();
+        if (open) {
+            loadDraftFromConfig();
+            forceActiveFocus();
+        }
     }
 
     Component.onCompleted: {
-        if (open) loadDraftFromConfig();
+        if (open) {
+            loadDraftFromConfig();
+            forceActiveFocus();
+        }
     }
 
-    // Backdrop dismiss click
+    // Backdrop dismiss click (absorbs hover, clicks, and wheel so underlying canvas stays untouched)
     Rectangle {
         anchors.fill: parent
         color: Theme.alphaColor(Theme.backdropDim, 0.55)
 
         MouseArea {
             anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+            onPressed: (mouse) => mouse.accepted = true
+            onReleased: (mouse) => mouse.accepted = true
             onClicked: root.closeRequested()
+            onWheel: (wheel) => wheel.accepted = true
         }
     }
 
@@ -171,9 +191,12 @@ Item {
 
         MouseArea {
             anchors.fill: parent
-            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            hoverEnabled: true
+            acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             onPressed: (mouse) => mouse.accepted = true
+            onReleased: (mouse) => mouse.accepted = true
             onClicked: (mouse) => mouse.accepted = true
+            onWheel: (wheel) => wheel.accepted = true
         }
 
         Column {
@@ -188,6 +211,7 @@ Item {
                 spacing: 8
 
                 Text {
+                    id: headerTitle
                     text: "󰒓  " + I18n.t("settings")
                     font.family: Theme.fontFamily
                     font.pixelSize: 15
@@ -196,9 +220,13 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
-                Item { width: Math.max(8, parent.width - 220); height: 1 }
+                Item {
+                    width: Math.max(8, parent.width - headerTitle.implicitWidth - (statusLbl.visible ? statusLbl.implicitWidth + 8 : 0) - 28 - 24)
+                    height: 1
+                }
 
                 Text {
+                    id: statusLbl
                     visible: root.statusMessage.length > 0
                     text: root.statusMessage
                     font.family: Theme.fontFamily
@@ -283,6 +311,7 @@ Item {
                 width: parent.width
                 height: parent.height - 134
                 clip: true
+                boundsBehavior: Flickable.StopAtBounds
                 contentHeight: sectionCol.implicitHeight + 8
 
                 Column {
@@ -331,6 +360,7 @@ Item {
                                 }
                                 MouseArea {
                                     anchors.fill: parent
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: toggled(!checked)
                                 }
@@ -379,6 +409,7 @@ Item {
                                         border.width: 1
                                         MouseArea {
                                             anchors.fill: parent
+                                            hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: chosen(modelData)
                                         }
@@ -469,6 +500,7 @@ Item {
                     }
 
                     component TextSettingRow: Rectangle {
+                        id: textRow
                         property string title: ""
                         property string value: ""
                         property string placeholder: ""
@@ -486,7 +518,7 @@ Item {
                             anchors.rightMargin: 12
                             spacing: 4
                             Text {
-                                text: title
+                                text: textRow.title
                                 font.family: Theme.fontFamily
                                 font.pixelSize: 11
                                 color: Theme.textSubtle
@@ -500,19 +532,44 @@ Item {
                                 border.width: 1
                                 TextInput {
                                     id: fieldInput
+                                    property bool _editing: false
                                     anchors.fill: parent
                                     anchors.leftMargin: 6
                                     anchors.rightMargin: 6
                                     verticalAlignment: TextInput.AlignVCenter
-                                    text: value
                                     color: Theme.text
+                                    selectionColor: Theme.accent
+                                    selectedTextColor: Theme.accentText
+                                    selectByMouse: true
                                     font.family: Theme.fontFamily
                                     font.pixelSize: 11
                                     clip: true
-                                    onTextEdited: edited(text)
+                                    Component.onCompleted: text = textRow.value
+                                    onTextEdited: {
+                                        _editing = true;
+                                        textRow.edited(text);
+                                        _editing = false;
+                                    }
+                                    Keys.onReturnPressed: (event) => {
+                                        event.accepted = true;
+                                        fieldInput.focus = false;
+                                        root.forceActiveFocus();
+                                    }
+                                    Keys.onEscapePressed: (event) => {
+                                        event.accepted = true;
+                                        root.closeRequested();
+                                    }
+                                    Connections {
+                                        target: textRow
+                                        function onValueChanged() {
+                                            if (!fieldInput._editing && fieldInput.text !== textRow.value) {
+                                                fieldInput.text = textRow.value;
+                                            }
+                                        }
+                                    }
                                     Text {
-                                        visible: parent.text.length === 0 && placeholder.length > 0
-                                        text: placeholder
+                                        visible: parent.text.length === 0 && textRow.placeholder.length > 0
+                                        text: textRow.placeholder
                                         color: Theme.textSubtle
                                         font.family: Theme.fontFamily
                                         font.pixelSize: 11
@@ -548,18 +605,18 @@ Item {
                         }
                         BoolSettingRow {
                             title: root.label("Sync Satty Palette Export", "Exportovat paletu pro Satty")
-                            checked: !(root.draft.theme && root.draft.theme.syncSatty === false)
+                            checked: !!(root.draft.theme && root.draft.theme.syncSatty === true)
                             onToggled: (v) => root.setNested("theme", "syncSatty", v)
                         }
                         NumberSettingRow {
                             title: root.label("Backdrop Dim Opacity", "Ztmavení pozadí")
-                            value: (root.draft.theme && root.draft.theme.dimOpacity !== undefined) ? root.draft.theme.dimOpacity : 0.45
+                            value: (root.draft.theme && root.draft.theme.dimOpacity !== undefined) ? root.draft.theme.dimOpacity : 0.65
                             minVal: 0.0; maxVal: 0.90; stepVal: 0.05; decimals: 2
                             onUpdated: (v) => root.setNested("theme", "dimOpacity", v)
                         }
                         NumberSettingRow {
                             title: root.label("Selection Corner Radius", "Zaoblení výběru")
-                            value: (root.draft.theme && root.draft.theme.borderRadius !== undefined) ? root.draft.theme.borderRadius : 8
+                            value: (root.draft.theme && root.draft.theme.borderRadius !== undefined) ? root.draft.theme.borderRadius : 10
                             minVal: 0; maxVal: 24; stepVal: 1; decimals: 0
                             onUpdated: (v) => root.setNested("theme", "borderRadius", v)
                         }
@@ -614,7 +671,7 @@ Item {
                         }
                         NumberSettingRow {
                             title: root.label("Min Confidence Filter", "Minimální spolehlivost boxů")
-                            value: (root.draft.rating && root.draft.rating.minConfidence !== undefined) ? root.draft.rating.minConfidence : 0.35
+                            value: (root.draft.rating && root.draft.rating.minConfidence !== undefined) ? root.draft.rating.minConfidence : 0.30
                             minVal: 0.0; maxVal: 0.90; stepVal: 0.05; decimals: 2
                             onUpdated: (v) => root.setNested("rating", "minConfidence", v)
                         }
@@ -716,9 +773,15 @@ Item {
                         }
                         NumberSettingRow {
                             title: root.label("Magnifier Zoom Factor", "Přiblížení lupy")
-                            value: (root.draft.ui && root.draft.ui.magnifierZoom !== undefined) ? root.draft.ui.magnifierZoom : 4
-                            minVal: 2; maxVal: 10; stepVal: 1; decimals: 0
+                            value: (root.draft.ui && root.draft.ui.magnifierZoom !== undefined) ? root.draft.ui.magnifierZoom : 3.0
+                            minVal: 1.5; maxVal: 10; stepVal: 0.5; decimals: 1
                             onUpdated: (v) => root.setNested("ui", "magnifierZoom", v)
+                        }
+                        NumberSettingRow {
+                            title: root.label("Magnifier Size (px)", "Velikost lupy (px)")
+                            value: (root.draft.ui && root.draft.ui.magnifierSize !== undefined) ? root.draft.ui.magnifierSize : 180
+                            minVal: 100; maxVal: 320; stepVal: 10; decimals: 0
+                            onUpdated: (v) => root.setNested("ui", "magnifierSize", v)
                         }
                         BoolSettingRow {
                             title: root.label("Show Bottom Keyboard Hints", "Zobrazit spodní nápovědu kláves")

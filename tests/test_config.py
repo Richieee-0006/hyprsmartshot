@@ -7,11 +7,13 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 REPO_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 CONFIG_JSON = os.path.join(REPO_DIR, "config", "hyprsmartshot", "config.json")
+CONFIG_LOADER = os.path.join(REPO_DIR, "vision", "config_loader.py")
 RUNNER_BIN = os.path.join(REPO_DIR, "bin", "hyprsmartshot")
 
 
@@ -293,6 +295,183 @@ class TestConfiguration(unittest.TestCase):
                 proc = subprocess.run(["quickshell", "-p", tf_path], capture_output=True, text=True, env=env)
                 output = proc.stdout + proc.stderr
                 self.assertIn("THEME_OK:#123456|source=pywal", output)
+            finally:
+                if os.path.exists(tf_path):
+                    os.remove(tf_path)
+
+    def test_quickshell_settings_save_persists_over_merged_dropin_and_no_btoa(self):
+        if not shutil.which("quickshell"):
+            self.skipTest("quickshell not installed in environment")
+
+        with tempfile.TemporaryDirectory() as tmp_xdg:
+            cfg_dir = os.path.join(tmp_xdg, "hyprsmartshot")
+            os.makedirs(cfg_dir, exist_ok=True)
+            user_cfg_path = os.path.join(cfg_dir, "config.json")
+            with open(user_cfg_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "language": "en",
+                    "theme": {"mode": "pywal"},
+                    "ai": {"enabled": False, "trigger": "manual"},
+                }, f)
+
+            merged_cfg_path = os.path.join(tmp_xdg, "merged.json")
+            dump_proc = subprocess.run(
+                [sys.executable, CONFIG_LOADER, "--config", user_cfg_path, "--dump-merged"],
+                capture_output=True, text=True, check=True,
+            )
+            with open(merged_cfg_path, "w", encoding="utf-8") as f:
+                f.write(dump_proc.stdout)
+
+            test_qml = f"""
+            import QtQuick
+            import Quickshell
+            import "file://{REPO_DIR}/components"
+
+            Scope {{
+                id: root
+                SettingsModal {{ id: modal; open: false }}
+                SmartSelector {{ id: sel; width: 1280; height: 720; interactionBlocked: modal.open }}
+                Timer {{
+                    interval: 40
+                    repeat: true
+                    running: true
+                    property int ticks: 0
+                    property bool saved: false
+                    onTriggered: {{
+                        ticks++;
+                        if (!saved && ticks >= 3) {{
+                            modal.open = true;
+                            modal.setNested("ai", "enabled", true);
+                            modal.setNested("ai", "trigger", "auto");
+                            modal.setAiProviderField("model", "qwen-test'quote");
+                            modal.setNested("theme", "mode", "static");
+                            modal.setNested(null, "language", "cs");
+                            modal.applyAndSave();
+                            saved = true;
+                        }} else if (saved && ticks >= 14) {{
+                            const ok = (
+                                Config.ai.enabled === true &&
+                                Config.ai.trigger === "auto" &&
+                                Config.ai.providers.openai_compatible.model === "qwen-test'quote" &&
+                                Config.theme.mode === "static" &&
+                                Config.language === "cs" &&
+                                I18n.language === "cs" &&
+                                modal.isCzech() === true &&
+                                Theme.themeSource === "static"
+                            );
+                            console.log((ok ? "SAVE_OK:" : "SAVE_FAIL:") + JSON.stringify({{
+                                aiEnabled: Config.ai.enabled,
+                                aiTrigger: Config.ai.trigger,
+                                model: Config.ai.providers.openai_compatible.model,
+                                themeMode: Config.theme.mode,
+                                lang: Config.language,
+                                i18nLang: I18n.language,
+                                isCzech: modal.isCzech(),
+                                themeSrc: Theme.themeSource,
+                                statusMsg: modal.statusMessage
+                            }}));
+                            Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
+                        }}
+                    }}
+                }}
+            }}
+            """
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".qml", delete=False) as tf:
+                tf.write(test_qml)
+                tf_path = tf.name
+            try:
+                env = os.environ.copy()
+                env["SMARTSHOT_DIR"] = REPO_DIR
+                env["XDG_CONFIG_HOME"] = tmp_xdg
+                env["SMARTSHOT_CONFIG"] = user_cfg_path
+                env["SMARTSHOT_MERGED_CONFIG"] = merged_cfg_path
+                env["SMARTSHOT_LANG"] = "en"
+                env["SMARTSHOT_PYTHON"] = sys.executable
+                proc = subprocess.run(["quickshell", "-p", tf_path], capture_output=True, text=True, env=env, timeout=15)
+                output = proc.stdout + proc.stderr
+                self.assertIn("SAVE_OK:", output, f"Settings save failed or reverted:\n{output}")
+                self.assertNotIn("Qt.btoa", output, f"Deprecated Qt.btoa warning still emitted:\n{output}")
+
+                with open(user_cfg_path, "r", encoding="utf-8") as f:
+                    saved_user = json.load(f)
+                self.assertTrue(saved_user["ai"]["enabled"])
+                self.assertEqual(saved_user["ai"]["trigger"], "auto")
+                self.assertEqual(saved_user["ai"]["providers"]["openai_compatible"]["model"], "qwen-test'quote")
+                self.assertEqual(saved_user["theme"]["mode"], "static")
+                self.assertEqual(saved_user["language"], "cs")
+
+                with open(merged_cfg_path, "r", encoding="utf-8") as f:
+                    saved_merged = json.load(f)
+                self.assertTrue(saved_merged["ai"]["enabled"])
+                self.assertEqual(saved_merged["language"], "cs")
+            finally:
+                if os.path.exists(tf_path):
+                    os.remove(tf_path)
+
+    def test_quickshell_settings_open_blocks_bounding_box_selection(self):
+        if not shutil.which("quickshell"):
+            self.skipTest("quickshell not installed in environment")
+
+        with tempfile.TemporaryDirectory() as tmp_xdg:
+            test_qml = f"""
+            import QtQuick
+            import Quickshell
+            import "file://{REPO_DIR}/components"
+
+            Scope {{
+                id: root
+                SmartSelector {{
+                    id: sel
+                    width: 1280
+                    height: 720
+                    interactionBlocked: false
+                }}
+                Timer {{
+                    interval: 25
+                    repeat: false
+                    running: true
+                    onTriggered: {{
+                        sel.loadDetectedBoxes(JSON.stringify({{
+                            elapsed_ms: 5,
+                            count: 1,
+                            boxes: [{{ x: 100, y: 100, w: 200, h: 120, type: "panel", confidence: 0.92 }}]
+                        }}));
+                        sel.updateHoverCandidates(150, 150);
+                        const hoveredOk = (sel.targetW === 200 && sel.candidateHierarchy.length >= 1);
+
+                        sel.interactionBlocked = true;
+                        const clearedOnOpen = (sel.targetW === 0 && sel.selectionWidth === 0 && sel.candidateHierarchy.length === 0);
+
+                        sel.updateHoverCandidates(150, 150);
+                        sel.cycleHierarchy(1);
+                        const stayedBlocked = (sel.targetW === 0 && sel.selectionWidth === 0);
+
+                        sel.interactionBlocked = false;
+                        sel.isConfirmed = true;
+                        sel.setSelection(100, 100, 200, 120);
+                        sel.interactionBlocked = true;
+                        sel.nudgeSelection(25, 25);
+                        sel.resizeSelection(40, 40);
+                        const confirmedFrozen = (sel.selectionX === 100 && sel.selectionY === 100 && sel.selectionWidth === 200 && sel.selectionHeight === 120);
+
+                        console.log((hoveredOk && clearedOnOpen && stayedBlocked && confirmedFrozen) ? "BLOCK_OK" : "BLOCK_FAIL:" + JSON.stringify({{
+                            hoveredOk, clearedOnOpen, stayedBlocked, confirmedFrozen
+                        }}));
+                        Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
+                    }}
+                }}
+            }}
+            """
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".qml", delete=False) as tf:
+                tf.write(test_qml)
+                tf_path = tf.name
+            try:
+                env = os.environ.copy()
+                env["SMARTSHOT_DIR"] = REPO_DIR
+                env["XDG_CONFIG_HOME"] = tmp_xdg
+                proc = subprocess.run(["quickshell", "-p", tf_path], capture_output=True, text=True, env=env, timeout=15)
+                output = proc.stdout + proc.stderr
+                self.assertIn("BLOCK_OK", output, f"SmartSelector blocking failed:\n{output}")
             finally:
                 if os.path.exists(tf_path):
                     os.remove(tf_path)

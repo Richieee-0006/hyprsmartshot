@@ -265,6 +265,7 @@ Scope {
             showToastMessage(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
             settingsModal.activeTab = "ai";
             root.settingsOpen = true;
+            settingsModal.forceActiveFocus();
             return;
         }
         try {
@@ -302,19 +303,20 @@ Scope {
 
     FreezeScreen {
         id: freezeWindow
-        onVisibleChanged: if (visible && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
-        onWindowConnected: if (typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
+        onVisibleChanged: if (visible && !root.settingsOpen && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
+        onWindowConnected: if (!root.settingsOpen && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
 
         Timer {
             interval: 50
             running: true
             repeat: false
-            onTriggered: if (typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
+            onTriggered: if (!root.settingsOpen && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
         }
 
         SmartSelector {
             id: selector
             mode: root.mode
+            interactionBlocked: root.settingsOpen
 
             onCopyAction: (x, y, w, h) => root.doCopy(x, y, w, h)
             onSaveAction: (x, y, w, h) => root.doSave(x, y, w, h)
@@ -362,13 +364,18 @@ Scope {
                     root.showToastMessage(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
                     settingsModal.activeTab = "ai";
                     root.settingsOpen = true;
+                    settingsModal.forceActiveFocus();
                 } else {
                     selector.requestAiDetection();
                 }
             }
             onSettingsRequested: {
                 root.settingsOpen = !root.settingsOpen;
-                if (!root.settingsOpen) keyboardHandler.forceActiveFocus();
+                if (root.settingsOpen) {
+                    settingsModal.forceActiveFocus();
+                } else {
+                    keyboardHandler.forceActiveFocus();
+                }
             }
             onCloseRequested: root.closeOverlay()
         }
@@ -376,9 +383,9 @@ Scope {
         // Magnifier Loupe
         Magnifier {
             id: magnifier
-            active: root.magnifierActive
+            active: root.magnifierActive && !root.settingsOpen
             sourceImage: freezeWindow.backgroundImage
-            zoomFactor: (typeof Config !== "undefined" && Config && Config.ui && Config.ui.magnifierZoom) ? Number(Config.ui.magnifierZoom) : 4
+            zoomFactor: (typeof Config !== "undefined" && Config && Config.ui && Config.ui.magnifierZoom) ? Number(Config.ui.magnifierZoom) : 3.0
             targetX: selector.cursorX
             targetY: selector.cursorY
             z: 40
@@ -442,21 +449,24 @@ Scope {
                 keyboardHandler.forceActiveFocus();
             }
             onApplied: (patch) => {
-                root.showToastMessage(I18n.t("settings"));
+                root.showToastMessage(settingsModal.label("Settings saved", "Nastavení uloženo"));
                 if (patch && patch.theme && patch.theme.syncSatty) {
                     const dir = Quickshell.env("SMARTSHOT_DIR") || ".";
                     const py = root.resolvePythonCmd();
                     const sc = dir + "/vision/config_loader.py";
-                    Quickshell.execDetached(["sh", "-c", `${root.shellEscape(py)} ${root.shellEscape(sc)} --sync-satty >/dev/null 2>&1 || python3 ${root.shellEscape(sc)} --sync-satty >/dev/null 2>&1`]);
+                    const cfgPath = Quickshell.env("SMARTSHOT_CONFIG") || "";
+                    const cfgFlag = cfgPath ? ` --config ${root.shellEscape(cfgPath)}` : "";
+                    Quickshell.execDetached(["sh", "-c", `${root.shellEscape(py)} ${root.shellEscape(sc)}${cfgFlag} --sync-satty >/dev/null 2>&1 || python3 ${root.shellEscape(sc)}${cfgFlag} --sync-satty >/dev/null 2>&1`]);
                 }
+                selector.scheduleCvReload();
             }
         }
 
         // Keyboard Handler
         Item {
             id: keyboardHandler
-            focus: true
-            Component.onCompleted: forceActiveFocus()
+            focus: !root.settingsOpen
+            Component.onCompleted: if (!root.settingsOpen) forceActiveFocus()
 
             Keys.onEscapePressed: (event) => {
                 event.accepted = true;
@@ -551,6 +561,7 @@ Scope {
                         root.showToastMessage(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
                         settingsModal.activeTab = "ai";
                         root.settingsOpen = true;
+                        settingsModal.forceActiveFocus();
                     } else {
                         selector.requestAiDetection();
                     }
@@ -561,6 +572,11 @@ Scope {
                 // Comma (,): Open Settings Modal
                 if (event.key === Qt.Key_Comma) {
                     root.settingsOpen = !root.settingsOpen;
+                    if (root.settingsOpen) {
+                        settingsModal.forceActiveFocus();
+                    } else {
+                        keyboardHandler.forceActiveFocus();
+                    }
                     event.accepted = true;
                     return;
                 }

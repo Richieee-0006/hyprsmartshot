@@ -194,6 +194,7 @@ Singleton {
     property var _userMainSnapshot: null
     property var _moduleSnapshots: ({})
     property var _mergedDropinSnapshot: null
+    property var _runtimePatchSnapshot: null
 
     function applyConfig(data) {
         if (!data || typeof data !== "object") return;
@@ -246,6 +247,9 @@ Singleton {
     function _reapplyLayered() {
         if (root._mergedDropinSnapshot) {
             root.applyConfig(root._mergedDropinSnapshot);
+            if (root._runtimePatchSnapshot) {
+                root.applyConfig(root._runtimePatchSnapshot);
+            }
             return;
         }
         if (root._baseDefaultsSnapshot) root.applyConfig(root._baseDefaultsSnapshot);
@@ -263,24 +267,45 @@ Singleton {
                 root.applyConfig(wrapped);
             }
         }
+        if (root._runtimePatchSnapshot) {
+            root.applyConfig(root._runtimePatchSnapshot);
+        }
     }
 
     function pythonBin() {
-        const venvPy = root.repoDir + "/.venv/bin/python";
-        return venvPy;
+        const envPy = Quickshell.env("SMARTSHOT_PYTHON") || "";
+        if (envPy) return envPy;
+        return root.repoDir + "/.venv/bin/python";
+    }
+
+    function _shellQuote(s) {
+        return "'" + String(s === undefined || s === null ? "" : s).replace(/'/g, "'\\''") + "'";
     }
 
     function savePatch(patchObj) {
         if (!patchObj || typeof patchObj !== "object") return;
-        root.applyConfig(patchObj);
-        if (typeof patchObj.language === "string" && patchObj.language.trim().length > 0 && typeof I18n !== "undefined") {
-            I18n.language = I18n.sanitizeLang(patchObj.language);
+        const patchCopy = JSON.parse(JSON.stringify(patchObj));
+        root._runtimePatchSnapshot = root.deepMerge(root._runtimePatchSnapshot || {}, patchCopy);
+        if (root._mergedDropinSnapshot) {
+            root._mergedDropinSnapshot = root.deepMerge(root._mergedDropinSnapshot, patchCopy);
         }
-        const jsonPayload = JSON.stringify(patchObj);
-        const cfgArg = root.configJsonPath;
-        const loaderScript = root.repoDir + "/vision/config_loader.py";
-        const b64 = Qt.btoa(unescape(encodeURIComponent(jsonPayload)));
-        const cmd = `PY="${root.pythonBin()}"; [ -x "$PY" ] || PY=python3; printf '%s' '${b64}' | base64 -d | "$PY" "${loaderScript}" --config "${cfgArg}" --patch-stdin`;
+        if (root._userMainSnapshot) {
+            root._userMainSnapshot = root.deepMerge(root._userMainSnapshot, patchCopy);
+        }
+        root.applyConfig(patchCopy);
+        if (typeof patchCopy.language === "string" && patchCopy.language.trim().length > 0 && typeof I18n !== "undefined") {
+            I18n.language = I18n.sanitizeLang(patchCopy.language);
+        }
+        const jsonPayload = JSON.stringify(patchCopy);
+        const pyQ = root._shellQuote(root.pythonBin());
+        const loaderQ = root._shellQuote(root.repoDir + "/vision/config_loader.py");
+        const cfgQ = root._shellQuote(root.configJsonPath);
+        const jsonQ = root._shellQuote(jsonPayload);
+        const mergedQ = root.mergedDropinPath ? root._shellQuote(root.mergedDropinPath) : "";
+        const dumpCmd = mergedQ
+            ? ` && "$PY" ${loaderQ} --config ${cfgQ} --dump-merged > ${mergedQ}.tmp && mv -f ${mergedQ}.tmp ${mergedQ}`
+            : "";
+        const cmd = `PY=${pyQ}; [ -x "$PY" ] || PY=python3; printf '%s' ${jsonQ} | "$PY" ${loaderQ} --config ${cfgQ} --patch-stdin >/dev/null${dumpCmd}`;
         Quickshell.execDetached(["sh", "-c", cmd]);
     }
 

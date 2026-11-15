@@ -24,11 +24,35 @@ Item {
         return (s > 0) ? s : 1.0;
     }
     property bool isConfirmed: false
+    property bool interactionBlocked: false
     property int currentHierarchyIndex: 0
     property var candidateHierarchy: []
     property real pillSpawnX: 0
     property real pillSpawnY: 0
     property bool _updatingCandidates: false
+
+    onInteractionBlockedChanged: {
+        if (interactionBlocked) {
+            root.isDragging = false;
+            root.isResizing = false;
+            root.isMoving = false;
+            root.activeResizeHandle = "";
+            actionPill.ocrMenuOpen = false;
+            actionPill.aiMenuOpen = false;
+            if (!root.isConfirmed) {
+                root.candidateHierarchy = [];
+                root.currentHierarchyIndex = 0;
+                root.selectionX = 0;
+                root.selectionY = 0;
+                root.selectionWidth = 0;
+                root.selectionHeight = 0;
+                root.targetX = 0;
+                root.targetY = 0;
+                root.targetW = 0;
+                root.targetH = 0;
+            }
+        }
+    }
 
     property string activePresetKey: {
         const envPreset = Quickshell.env("SMARTSHOT_PRESET") || "";
@@ -42,7 +66,7 @@ Item {
     property bool manualPresetSelected: (Quickshell.env("SMARTSHOT_PRESET") || "").length > 0
 
     onActivePresetKeyChanged: {
-        if (!root._updatingCandidates && !root.isConfirmed && !root.isDragging) {
+        if (!root._updatingCandidates && !root.interactionBlocked && !root.isConfirmed && !root.isDragging) {
             updateHoverCandidates(cursorX, cursorY);
         }
     }
@@ -155,14 +179,14 @@ Item {
     }
 
     function nudgeSelection(dx, dy) {
-        if (!root.isConfirmed) return;
+        if (root.interactionBlocked || !root.isConfirmed) return;
         const newX = Math.max(0, Math.min(root.width - root.selectionWidth, root.selectionX + dx));
         const newY = Math.max(0, Math.min(root.height - root.selectionHeight, root.selectionY + dy));
         setSelection(newX, newY, root.selectionWidth, root.selectionHeight);
     }
 
     function resizeSelection(dw, dh) {
-        if (!root.isConfirmed) return;
+        if (root.interactionBlocked || !root.isConfirmed) return;
         const newW = Math.max(16, Math.min(root.width - root.selectionX, root.selectionWidth + dw));
         const newH = Math.max(16, Math.min(root.height - root.selectionY, root.selectionHeight + dh));
         setSelection(root.selectionX, root.selectionY, newW, newH);
@@ -190,7 +214,7 @@ Item {
                     title: b.title || "",
                     class: b.class || ""
                 }));
-                if (root.detectedBoxes.length > 0 && !root.isConfirmed && !root.isDragging) {
+                if (root.detectedBoxes.length > 0 && !root.interactionBlocked && !root.isConfirmed && !root.isDragging) {
                     root.updateHoverCandidates(root.cursorX, root.cursorY);
                 }
             }
@@ -233,7 +257,7 @@ Item {
                 const desc = I18n.t("aiDoneDesc").replace("{count}", String(root.aiBoxes.length));
                 root.aiStatusMessage = desc;
                 root.aiStatusChanged(I18n.t("aiDoneTitle") + " — " + desc);
-                if (!root.isConfirmed && !root.isDragging) {
+                if (!root.interactionBlocked && !root.isConfirmed && !root.isDragging) {
                     root.updateHoverCandidates(root.cursorX, root.cursorY);
                 }
             }
@@ -297,6 +321,7 @@ Item {
     FileView {
         id: boxesFile
         path: "/tmp/hyprsmartshot_boxes.json"
+        printErrors: false
         onLoaded: {
             root.loadDetectedBoxes(text());
         }
@@ -322,10 +347,60 @@ Item {
         }
     }
 
+    function scheduleCvReload() {
+        cvReloadTimer.restart();
+    }
+
+    function reloadCvDetectionNow() {
+        if (Quickshell.env("SMARTSHOT_NO_CV") === "1") return;
+        if (cvReloadProc.running) return;
+        const dir = root.smartshotDir || ".";
+        const py = Quickshell.env("SMARTSHOT_PYTHON") || (dir + "/.venv/bin/python");
+        const script = dir + "/vision/detect_ui.py";
+        const cfgArg = Quickshell.env("SMARTSHOT_MERGED_CONFIG") || Quickshell.env("SMARTSHOT_CONFIG") || "";
+        const cmd = [py, script, "/tmp/hyprsmartshot_freeze.png", "/tmp/hyprsmartshot_boxes.json", "/tmp/hyprsmartshot_clients.json"];
+        if (root.manualPresetSelected && root.activePresetKey) {
+            cmd.push("--preset", root.activePresetKey);
+        }
+        if (cfgArg) {
+            cmd.push("--config", cfgArg);
+        }
+        root.cvCompleted = false;
+        cvReloadProc.command = cmd;
+        cvReloadProc.running = true;
+    }
+
+    Timer {
+        id: cvReloadTimer
+        interval: 220
+        repeat: false
+        onTriggered: root.reloadCvDetectionNow()
+    }
+
+    Process {
+        id: cvReloadProc
+        running: false
+        onExited: (exitCode, exitStatus) => {
+            const p = boxesFile.path;
+            boxesFile.path = "";
+            boxesFile.path = p;
+        }
+    }
+
+    Connections {
+        target: Config
+        function onConfigRevisionChanged() {
+            if (!root.interactionBlocked && !root.isConfirmed && !root.isDragging) {
+                root.updateHoverCandidates(root.cursorX, root.cursorY);
+            }
+        }
+    }
+
     // Load pre-dumped Hyprland clients JSON snapshot for instant window snapping
     FileView {
         id: clientsFile
         path: "/tmp/hyprsmartshot_clients.json"
+        printErrors: false
         onLoaded: {
             try {
                 const data = JSON.parse(text());
@@ -371,7 +446,7 @@ Item {
         color: "transparent"
         border.color: currentIsAi ? Theme.aiAccent : (root.isConfirmed ? Theme.selectionBorder : Theme.snapBorder)
         border.width: root.isConfirmed ? Math.max(2.0, Theme.outlineThickness + 0.5) : Theme.outlineThickness
-        visible: width > 0 && height > 0
+        visible: width > 0 && height > 0 && !(root.interactionBlocked && !root.isConfirmed)
         z: 10
 
         // Dimensions and hierarchy tag badge
@@ -418,8 +493,8 @@ Item {
             id: moveArea
             anchors.fill: parent
             anchors.margins: 6
-            enabled: root.isConfirmed && !root.isResizing
-            hoverEnabled: true
+            enabled: root.isConfirmed && !root.isResizing && !root.interactionBlocked
+            hoverEnabled: !root.interactionBlocked
             cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
             z: 1
 
@@ -462,7 +537,7 @@ Item {
         Item {
             id: handlesContainer
             anchors.fill: parent
-            visible: root.isConfirmed && parent.width >= 20 && parent.height >= 20
+            visible: root.isConfirmed && !root.interactionBlocked && parent.width >= 20 && parent.height >= 20
             z: 10
 
             // Helper component for handle rendering
@@ -627,7 +702,7 @@ Item {
     ActionPill {
         id: actionPill
         z: 20
-        visible: root.isConfirmed && root.selectionWidth > 0 && root.selectionHeight > 0
+        visible: root.isConfirmed && !root.interactionBlocked && root.selectionWidth > 0 && root.selectionHeight > 0
         selectionW: Math.round(root.selectionWidth)
         selectionH: Math.round(root.selectionHeight)
 
@@ -663,7 +738,7 @@ Item {
 
     // Find candidates containing point (x, y)
     function updateHoverCandidates(mx, my) {
-        if (root.isConfirmed || root.isDragging || root._updatingCandidates) return;
+        if (root.interactionBlocked || root.isConfirmed || root.isDragging || root._updatingCandidates) return;
         root._updatingCandidates = true;
         try {
             if (root.mode === "screen") {
@@ -943,7 +1018,7 @@ Item {
 
     // Hierarchy cycle via mouse wheel or keys
     function cycleHierarchy(direction) {
-        if (root.candidateHierarchy.length <= 1) return;
+        if (root.interactionBlocked || root.candidateHierarchy.length <= 1) return;
         if (direction > 0) {
             // Zoom out (larger container / grid / window)
             root.currentHierarchyIndex = Math.min(root.currentHierarchyIndex + 1, root.candidateHierarchy.length - 1);
@@ -1050,12 +1125,14 @@ Item {
     MouseArea {
         id: mouseArea
         anchors.fill: parent
-        hoverEnabled: true
+        enabled: !root.interactionBlocked
+        hoverEnabled: !root.interactionBlocked
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        cursorShape: root.isConfirmed ? Qt.ArrowCursor : Qt.CrossCursor
+        cursorShape: root.interactionBlocked ? Qt.ArrowCursor : (root.isConfirmed ? Qt.ArrowCursor : Qt.CrossCursor)
         z: 1
 
         onPositionChanged: (mouse) => {
+            if (root.interactionBlocked) return;
             if (mouse.buttons & Qt.LeftButton) {
                 if (!root.isDragging && !root.isConfirmed && !root.isResizing && !root.isMoving) {
                     const dist = Math.hypot(mouse.x - root.dragStart.x, mouse.y - root.dragStart.y);
@@ -1083,6 +1160,7 @@ Item {
         }
 
         onPressed: (mouse) => {
+            if (root.interactionBlocked) return;
             actionPill.ocrMenuOpen = false;
             actionPill.aiMenuOpen = false;
             if (mouse.button === Qt.RightButton) {
@@ -1112,6 +1190,7 @@ Item {
         }
 
         onReleased: (mouse) => {
+            if (root.interactionBlocked) return;
             if (mouse.button !== Qt.LeftButton) return;
 
             if (root.isDragging) {
@@ -1134,12 +1213,17 @@ Item {
         }
 
         onDoubleClicked: (mouse) => {
+            if (root.interactionBlocked) return;
             if (mouse.button === Qt.LeftButton && root.selectionWidth > 8 && root.selectionHeight > 8) {
                 root.copyAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight);
             }
         }
 
         onWheel: (wheel) => {
+            if (root.interactionBlocked) {
+                wheel.accepted = true;
+                return;
+            }
             wheel.accepted = true;
             root.cycleHierarchy(wheel.angleDelta.y);
         }
