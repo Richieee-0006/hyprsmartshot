@@ -58,7 +58,21 @@ REQUIRED_KEYS = {
     "ocrNoTextTitle",
     "ocrNoTextDesc",
     "ocrNotFoundTitle",
-    "ocrNotFoundDesc"
+    "ocrNotFoundDesc",
+    "aiDetect",
+    "aiAction",
+    "aiOcr",
+    "aiDescribe",
+    "settings",
+    "tagAi",
+    "aiDisabledTitle",
+    "aiDisabledDesc",
+    "aiDoneTitle",
+    "aiDoneDesc",
+    "aiFailTitle",
+    "aiFailDesc",
+    "ratePositive",
+    "rateNegative"
 }
 
 class TestLocalization(unittest.TestCase):

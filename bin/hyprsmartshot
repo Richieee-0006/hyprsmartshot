@@ -22,7 +22,7 @@ HyprSmartShot v$VERSION
 Ultra-smart screenshot and annotation utility crafted for Hyprland on Wayland.
 
 Usage:
-  hyprsmartshot [COMMAND|OPTION]
+  hyprsmartshot [COMMAND] [OPTIONS]
 
 Commands:
   universal       Smart UI detection and interactive overlay (default)
@@ -31,8 +31,15 @@ Commands:
   pin             Display image in a pinned, floating native Wayland window
 
 Options:
-  -h, --help      Display this help message
-  -v, --version   Display version information
+  --mode <name>       Select capture mode (universal, screen, full)
+  --preset <name>     Override active detection preset (default, browser, terminal, game)
+  --config <path>     Use custom config.json path
+  --ai                Enable AI box detection pass alongside CV
+  --no-ai             Disable AI pass even if ai.trigger=auto
+  --no-cv             Skip OpenCV detection pass
+  --doctor            Run environment, config, Pywal, and AI readiness checks
+  -h, --help          Display this help message
+  -v, --version       Display version information
 EOF
 }
 
@@ -40,22 +47,8 @@ show_version() {
     echo "hyprsmartshot v$VERSION"
 }
 
-# Scan for help/version flags anywhere in arguments
-for arg in "$@"; do
-    case "$arg" in
-        -h|--help|help)
-            show_help
-            exit 0
-            ;;
-        -v|--version|version)
-            show_version
-            exit 0
-            ;;
-    esac
-done
-
 # Dedicated pin mode: displays an existing image in a floating pinned Wayland window
-if [ "$1" = "pin" ]; then
+if [ "${1:-}" = "pin" ]; then
     shift
     if [ $# -lt 1 ]; then
         echo "Error: Missing image path for 'pin'" >&2
@@ -81,21 +74,105 @@ if [ "$1" = "pin" ]; then
     exec "$PIN_PYTHON" "$PIN_SCRIPT" "$@"
 fi
 
-if [ $# -gt 1 ]; then
-    echo "Error: Unexpected argument '$2'" >&2
+# Parse CLI flags + optional positional command
+MODE=""
+CLI_PRESET="${SMARTSHOT_PRESET:-}"
+CLI_CONFIG="${SMARTSHOT_CONFIG:-}"
+AI_FORCE=""
+NO_CV="${SMARTSHOT_NO_CV:-0}"
+DOCTOR_MODE=0
+POSITIONAL_ARGS=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help|help)
+            show_help
+            exit 0
+            ;;
+        -v|--version|version)
+            show_version
+            exit 0
+            ;;
+        --doctor)
+            DOCTOR_MODE=1
+            shift
+            ;;
+        --ai)
+            AI_FORCE="1"
+            shift
+            ;;
+        --no-ai)
+            AI_FORCE="0"
+            shift
+            ;;
+        --no-cv)
+            NO_CV="1"
+            shift
+            ;;
+        --preset=*)
+            CLI_PRESET="${1#*=}"
+            shift
+            ;;
+        --preset)
+            if [ $# -lt 2 ]; then
+                echo "Error: Missing value for --preset" >&2
+                exit 1
+            fi
+            CLI_PRESET="$2"
+            shift 2
+            ;;
+        --mode=*)
+            MODE="${1#*=}"
+            shift
+            ;;
+        --mode)
+            if [ $# -lt 2 ]; then
+                echo "Error: Missing value for --mode" >&2
+                exit 1
+            fi
+            MODE="$2"
+            shift 2
+            ;;
+        --config=*)
+            CLI_CONFIG="${1#*=}"
+            shift
+            ;;
+        --config)
+            if [ $# -lt 2 ]; then
+                echo "Error: Missing value for --config" >&2
+                exit 1
+            fi
+            CLI_CONFIG="$2"
+            shift 2
+            ;;
+        -*)
+            echo "Error: Unknown option '$1'" >&2
+            echo "Run 'hyprsmartshot --help' for usage." >&2
+            exit 1
+            ;;
+        *)
+            POSITIONAL_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+if [ ${#POSITIONAL_ARGS[@]} -gt 1 ]; then
+    echo "Error: Unexpected argument '${POSITIONAL_ARGS[1]}'" >&2
     echo "Run 'hyprsmartshot --help' for usage." >&2
     exit 1
 fi
 
-MODE="${1:-universal}"
+if [ -z "$MODE" ]; then
+    MODE="${POSITIONAL_ARGS[0]:-universal}"
+elif [ ${#POSITIONAL_ARGS[@]} -ge 1 ]; then
+    echo "Error: Unexpected argument '${POSITIONAL_ARGS[0]}'" >&2
+    echo "Run 'hyprsmartshot --help' for usage." >&2
+    exit 1
+fi
 
 case "$MODE" in
     universal|screen|full)
-        ;;
-    -*)
-        echo "Error: Unknown option '$MODE'" >&2
-        echo "Run 'hyprsmartshot --help' for usage." >&2
-        exit 1
         ;;
     *)
         echo "Error: Unknown command '$MODE'" >&2
@@ -107,7 +184,9 @@ esac
 
 FREEZE_IMG="/tmp/hyprsmartshot_freeze.png"
 BOXES_JSON="/tmp/hyprsmartshot_boxes.json"
+AI_BOXES_JSON="/tmp/hyprsmartshot_ai_boxes.json"
 CLIENTS_JSON="/tmp/hyprsmartshot_clients.json"
+MERGED_CONFIG_JSON="/tmp/hyprsmartshot_merged_config.json"
 if [ -x "$DIR/.venv/bin/python" ]; then
     VENV_PYTHON="$DIR/.venv/bin/python"
 elif command -v python3 >/dev/null 2>&1; then
@@ -116,15 +195,74 @@ else
     VENV_PYTHON="python"
 fi
 CV_SCRIPT="$DIR/vision/detect_ui.py"
+CONFIG_LOADER="$DIR/vision/config_loader.py"
+AI_SCRIPT="$DIR/vision/ai_detector.py"
 CLEANUP_PID_FILE="/tmp/hyprsmartshot_cleanup.pid"
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/hyprsmartshot"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 DEFAULT_CONFIG="$DIR/config/hyprsmartshot/config.json"
+[ -n "$CLI_CONFIG" ] && CONFIG_FILE="$CLI_CONFIG" && export SMARTSHOT_CONFIG="$CLI_CONFIG"
+[ -n "$CLI_PRESET" ] && export SMARTSHOT_PRESET="$CLI_PRESET"
+export SMARTSHOT_PYTHON="$VENV_PYTHON"
+export SMARTSHOT_AI_JSON="$AI_BOXES_JSON"
+
+if [ "$DOCTOR_MODE" = "1" ]; then
+    echo "HyprSmartShot Doctor (v$VERSION)"
+    echo "Dir: $DIR"
+    echo "Python: $VENV_PYTHON"
+    "$VENV_PYTHON" - "$DIR" "${CLI_CONFIG:-}" <<'PYDOC'
+import os, sys, shutil
+root = sys.argv[1]
+cfg_path = sys.argv[2] or None
+sys.path.insert(0, os.path.join(root, "vision"))
+from config_loader import load_config, resolve_pywal_palette, resolve_config_path, resolve_config_dir
+from ai_detector import check_ai_status
+
+cfg = load_config(cfg_path)
+user_cfg = resolve_config_path(cfg_path)
+drop_dir = os.path.join(resolve_config_dir(cfg_path), "config.d")
+pal = resolve_pywal_palette(cfg)
+ai = check_ai_status(cfg)
+
+print(f"User config: {user_cfg} (exists={os.path.isfile(user_cfg)}) | drop-ins dir={drop_dir}")
+print(f"Theme: source={pal['source']} isLight={pal['isLight']} accent={pal['accent']} bg={pal['background']}")
+print(f"Rating: enabled={cfg['rating'].get('enabled')} minConf={cfg['rating'].get('minConfidence')} adaptive={cfg['rating'].get('adaptiveLearning')}")
+print(f"AI: enabled={ai.get('enabled')} provider={ai.get('provider')} trigger={ai.get('trigger')} reachable={ai.get('reachable')} ({ai.get('detail')})")
+
+tools = ["grim", "hyprctl", "jq", "quickshell", "wl-copy", "tesseract", "satty", "magick"]
+missing = [t for t in tools if not shutil.which(t)]
+print("Tools missing: " + (", ".join(missing) if missing else "none"))
+PYDOC
+    exit 0
+fi
+
+# Merge modular configs + drop-ins cleanly into /tmp snapshot for shell + QML
+if [ -f "$CONFIG_LOADER" ]; then
+    LOADER_ARGS=(--dump-merged)
+    [ -n "$CLI_CONFIG" ] && LOADER_ARGS+=(--config "$CLI_CONFIG")
+    if "$VENV_PYTHON" "$CONFIG_LOADER" "${LOADER_ARGS[@]}" > "${MERGED_CONFIG_JSON}.tmp" 2>/dev/null && [ -s "${MERGED_CONFIG_JSON}.tmp" ]; then
+        mv -f "${MERGED_CONFIG_JSON}.tmp" "$MERGED_CONFIG_JSON"
+        export SMARTSHOT_MERGED_CONFIG="$MERGED_CONFIG_JSON"
+        if [ -z "$CLI_PRESET" ]; then
+            CFG_ACTIVE_PRESET=$(jq -r '.activePreset // empty' "$MERGED_CONFIG_JSON" 2>/dev/null || true)
+        fi
+        # Optional non-destructive Satty theme fragment export
+        if [ "$(jq -r '.theme.syncSatty // false' "$MERGED_CONFIG_JSON" 2>/dev/null || echo false)" = "true" ]; then
+            SATTY_ARGS=(--sync-satty)
+            [ -n "$CLI_CONFIG" ] && SATTY_ARGS+=(--config "$CLI_CONFIG")
+            "$VENV_PYTHON" "$CONFIG_LOADER" "${SATTY_ARGS[@]}" >/dev/null 2>&1 &
+        fi
+    else
+        rm -f "${MERGED_CONFIG_JSON}.tmp" 2>/dev/null || true
+    fi
+fi
 
 # Resolve language preference (default: "en", with dynamic arbitrary language code support)
 if [ -z "$SMARTSHOT_LANG" ]; then
-    if [ -f "$CONFIG_FILE" ]; then
+    if [ -f "$MERGED_CONFIG_JSON" ]; then
+        SMARTSHOT_LANG=$(jq -r '.language // empty' "$MERGED_CONFIG_JSON" 2>/dev/null || true)
+    elif [ -f "$CONFIG_FILE" ]; then
         SMARTSHOT_LANG=$(jq -r '.language // empty' "$CONFIG_FILE" 2>/dev/null || true)
     fi
     if [ -z "$SMARTSHOT_LANG" ] && [ -f "$DEFAULT_CONFIG" ]; then
@@ -188,21 +326,25 @@ if pgrep -f "^quickshell -p $DIR$" >/dev/null 2>&1; then
     quickshell kill -p "$DIR" >/dev/null 2>&1 || true
     pkill -f "^quickshell -p $DIR$" >/dev/null 2>&1 || true
 fi
-rm -f "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" 2>/dev/null || true
+rm -f "$FREEZE_IMG" "$BOXES_JSON" "$AI_BOXES_JSON" "$CLIENTS_JSON" 2>/dev/null || true
 echo '{"boxes":[]}' > "$BOXES_JSON"
 
 CV_PID=""
+AI_PID=""
 
 # Deferred cleanup on exit to ensure detached background processes (magick, wl-copy) complete safely
 cleanup() {
     if [ -n "$CV_PID" ] && kill -0 "$CV_PID" 2>/dev/null; then
         kill "$CV_PID" 2>/dev/null || true
     fi
+    if [ -n "$AI_PID" ] && kill -0 "$AI_PID" 2>/dev/null; then
+        kill "$AI_PID" 2>/dev/null || true
+    fi
     if pgrep -f "^quickshell -p $DIR$" >/dev/null 2>&1; then
         quickshell kill -p "$DIR" >/dev/null 2>&1 || true
         pkill -f "^quickshell -p $DIR$" >/dev/null 2>&1 || true
     fi
-    ( sleep 8 && rm -f "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" "$CLEANUP_PID_FILE" 2>/dev/null ) </dev/null >/dev/null 2>&1 &
+    ( sleep 8 && rm -f "$FREEZE_IMG" "$BOXES_JSON" "$AI_BOXES_JSON" "$CLIENTS_JSON" "$MERGED_CONFIG_JSON" "$CLEANUP_PID_FILE" 2>/dev/null ) </dev/null >/dev/null 2>&1 &
     echo $! > "$CLEANUP_PID_FILE" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
@@ -239,6 +381,12 @@ play_shutter() {
 # Fast fullscreen bypass if user called 'full'
 if [ "$MODE" = "full" ]; then
     SAVE_DIR="${XDG_PICTURES_DIR:-$HOME/Pictures}/Screenshots"
+    COPY_AFTER_SAVE="true"
+    if [ -s "$MERGED_CONFIG_JSON" ]; then
+        CFG_SAVE_DIR=$(jq -r '.capture.defaultSaveDir // empty' "$MERGED_CONFIG_JSON" 2>/dev/null || true)
+        [ -n "$CFG_SAVE_DIR" ] && SAVE_DIR="${CFG_SAVE_DIR/#\~/$HOME}"
+        COPY_AFTER_SAVE=$(jq -r 'if .capture.copyAfterSave == false then "false" else "true" end' "$MERGED_CONFIG_JSON" 2>/dev/null || echo true)
+    fi
     mkdir -p "$SAVE_DIR"
     TIMESTAMP=$(date +%Y-%m-%d_%H-%M-%S)
     FILEPATH="$SAVE_DIR/screenshot-$TIMESTAMP.png"
@@ -248,7 +396,9 @@ if [ "$MODE" = "full" ]; then
         grim "$FILEPATH"
     fi
     play_shutter &
-    wl-copy --type image/png < "$FILEPATH"
+    if [ "$COPY_AFTER_SAVE" = "true" ]; then
+        wl-copy --type image/png < "$FILEPATH"
+    fi
     FS_TITLE=$(get_translation "fullscreenTitle" "Fullscreen Captured")
     FS_DESC_FMT=$(get_translation "fullscreenDesc" "Saved to {path} and copied to clipboard")
     shopt -u patsub_replacement 2>/dev/null || true
@@ -260,7 +410,9 @@ if [ "$MODE" = "full" ]; then
     fi
 
     POST_SAVE_HOOK=""
-    if [ -f "$CONFIG_FILE" ]; then
+    if [ -s "$MERGED_CONFIG_JSON" ]; then
+        POST_SAVE_HOOK=$(jq -r '.postSaveHook // empty' "$MERGED_CONFIG_JSON" 2>/dev/null || true)
+    elif [ -f "$CONFIG_FILE" ]; then
         POST_SAVE_HOOK=$(jq -r '.postSaveHook // empty' "$CONFIG_FILE" 2>/dev/null || true)
     fi
     if [ -z "$POST_SAVE_HOOK" ] && [ -f "$DEFAULT_CONFIG" ]; then
@@ -292,10 +444,42 @@ fi
 
 wait "$CLIENTS_PID" 2>/dev/null || true
 
-# 2. Run Computer Vision UI detection asynchronously in background
-if [ -f "$CV_SCRIPT" ]; then
-    "$VENV_PYTHON" "$CV_SCRIPT" "$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON" 2>/dev/null &
+# 2. Run Computer Vision UI detection asynchronously in background (unless --no-cv)
+if [ "$NO_CV" != "1" ] && [ -f "$CV_SCRIPT" ]; then
+    CV_ARGS=("$FREEZE_IMG" "$BOXES_JSON" "$CLIENTS_JSON")
+    [ -n "$CLI_PRESET" ] && CV_ARGS+=(--preset "$CLI_PRESET")
+    if [ -s "$MERGED_CONFIG_JSON" ]; then
+        CV_ARGS+=(--config "$MERGED_CONFIG_JSON")
+    elif [ -n "$CLI_CONFIG" ]; then
+        CV_ARGS+=(--config "$CLI_CONFIG")
+    fi
+    "$VENV_PYTHON" "$CV_SCRIPT" "${CV_ARGS[@]}" 2>/dev/null &
     CV_PID=$!
+elif [ "$NO_CV" = "1" ]; then
+    echo '{"boxes":[],"count":0,"skipped":true}' > "$BOXES_JSON"
+fi
+
+# 2b. Optionally run AI bounding-box pass when --ai is passed or ai.trigger == auto
+RUN_AI_AUTO=0
+if [ "$AI_FORCE" = "1" ]; then
+    RUN_AI_AUTO=1
+elif [ "$AI_FORCE" != "0" ] && [ -s "$MERGED_CONFIG_JSON" ]; then
+    AI_EN=$(jq -r '.ai.enabled // false' "$MERGED_CONFIG_JSON" 2>/dev/null || echo false)
+    AI_TRG=$(jq -r '.ai.trigger // "manual"' "$MERGED_CONFIG_JSON" 2>/dev/null || echo manual)
+    if [ "$AI_EN" = "true" ] && [ "$AI_TRG" = "auto" ]; then
+        RUN_AI_AUTO=1
+    fi
+fi
+
+if [ "$RUN_AI_AUTO" = "1" ] && [ -f "$AI_SCRIPT" ]; then
+    AI_ARGS=(--detect "$FREEZE_IMG" --out "$AI_BOXES_JSON")
+    if [ -s "$MERGED_CONFIG_JSON" ]; then
+        AI_ARGS+=(--config "$MERGED_CONFIG_JSON")
+    elif [ -n "$CLI_CONFIG" ]; then
+        AI_ARGS+=(--config "$CLI_CONFIG")
+    fi
+    "$VENV_PYTHON" "$AI_SCRIPT" "${AI_ARGS[@]}" 2>/dev/null &
+    AI_PID=$!
 fi
 
 # 3. Resolve active window class in parallel with Python CV startup

@@ -16,10 +16,15 @@ Rectangle {
     signal modeSelected(string modeId)
     signal presetSelected(string presetKey)
     signal toggleMagnifierRequested()
+    signal aiDetectRequested()
+    signal settingsRequested()
     signal closeRequested()
 
+    property bool aiActive: false
+    property bool aiLoading: false
+
     height: 46
-    width: modes.length * 120 + 115 + 44 + 44 + 20
+    width: modes.length * 120 + 115 + 44 + 44 + 44 + 44 + 24
     radius: height / 2
     color: Theme.barBackground
     border.color: Theme.barBorder
@@ -94,7 +99,7 @@ Rectangle {
                         text: modelData.icon
                         font.family: Theme.fontFamily
                         font.pixelSize: 14
-                        color: root.currentMode === modelData.id ? "#ffffff" : Theme.textSubtle
+                        color: root.currentMode === modelData.id ? Theme.accentText : Theme.textSubtle
                     }
 
                     Text {
@@ -102,7 +107,7 @@ Rectangle {
                         font.family: Theme.fontFamily
                         font.pixelSize: 12
                         font.weight: root.currentMode === modelData.id ? Font.DemiBold : Font.Normal
-                        color: root.currentMode === modelData.id ? "#ffffff" : Theme.textSubtle
+                        color: root.currentMode === modelData.id ? Theme.accentText : Theme.textSubtle
                     }
                 }
             }
@@ -125,7 +130,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: height / 2
-                color: (presetMouse.containsMouse || root.presetDropdownOpen) ? Qt.rgba(1, 1, 1, 0.15) : "transparent"
+                color: (presetMouse.containsMouse || root.presetDropdownOpen) ? Theme.surfaceHover : "transparent"
             }
 
             MouseArea {
@@ -159,7 +164,7 @@ Rectangle {
                     font.family: Theme.fontFamily
                     font.pixelSize: 11
                     font.weight: Font.DemiBold
-                    color: root.presetDropdownOpen ? Theme.accent : "#ffffff"
+                    color: root.presetDropdownOpen ? Theme.accent : Theme.text
                     anchors.verticalCenter: parent.verticalCenter
                 }
 
@@ -189,7 +194,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: height / 2
-                color: root.magnifierActive ? Theme.accent : (magMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.15) : "transparent")
+                color: root.magnifierActive ? Theme.accent : (magMouse.containsMouse ? Theme.surfaceHover : "transparent")
             }
 
             MouseArea {
@@ -206,7 +211,71 @@ Rectangle {
                 text: "󰍉"
                 font.family: Theme.fontFamily
                 font.pixelSize: 15
-                color: root.magnifierActive ? "#ffffff" : (magMouse.containsMouse ? "#ffffff" : Theme.textSubtle)
+                color: root.magnifierActive ? Theme.accentText : (magMouse.containsMouse ? Theme.text : Theme.textSubtle)
+            }
+        }
+
+        // AI Box Detection Toggle Button
+        Item {
+            id: aiButtonItem
+            width: 44
+            height: root.height - 8
+            readonly property bool aiConfigured: (typeof Config !== "undefined" && Config && Config.ai && Config.ai.enabled === true)
+
+            Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: root.aiActive ? Theme.aiAccent : (aiMouse.containsMouse ? Theme.alphaColor(Theme.aiAccent, 0.22) : "transparent")
+                border.color: root.aiActive ? Theme.aiAccent : (aiButtonItem.aiConfigured ? Theme.alphaColor(Theme.aiAccent, 0.45) : "transparent")
+                border.width: 1
+                opacity: aiButtonItem.aiConfigured || root.aiActive ? 1.0 : 0.65
+            }
+
+            MouseArea {
+                id: aiMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                z: 10
+                onClicked: root.aiDetectRequested()
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: root.aiLoading ? "󰔟" : "󰚩"
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                color: root.aiActive ? Theme.accentText : (aiMouse.containsMouse ? Theme.aiAccent : (aiButtonItem.aiConfigured ? Theme.aiAccent : Theme.textSubtle))
+            }
+        }
+
+        // Settings Modal Button
+        Item {
+            id: settingsButtonItem
+            width: 44
+            height: root.height - 8
+
+            Rectangle {
+                anchors.fill: parent
+                radius: height / 2
+                color: settingsMouse.containsMouse ? Theme.surfaceHover : "transparent"
+            }
+
+            MouseArea {
+                id: settingsMouse
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                z: 10
+                onClicked: root.settingsRequested()
+            }
+
+            Text {
+                anchors.centerIn: parent
+                text: "󰒓"
+                font.family: Theme.fontFamily
+                font.pixelSize: 15
+                color: settingsMouse.containsMouse ? Theme.text : Theme.textSubtle
             }
         }
 
@@ -218,7 +287,7 @@ Rectangle {
             Rectangle {
                 anchors.fill: parent
                 radius: height / 2
-                color: closeMouse.containsMouse ? Qt.rgba(1, 0, 0, 0.3) : "transparent"
+                color: closeMouse.containsMouse ? Theme.alphaColor(Theme.danger, 0.3) : "transparent"
             }
 
             MouseArea {
@@ -235,7 +304,7 @@ Rectangle {
                 text: "✕"
                 font.pixelSize: 13
                 font.weight: Font.Bold
-                color: closeMouse.containsMouse ? "#ff6b6b" : Theme.textSubtle
+                color: closeMouse.containsMouse ? Theme.danger : Theme.textSubtle
             }
         }
     }
@@ -268,7 +337,7 @@ Rectangle {
                     width: parent.width
                     height: 26
                     radius: 6
-                    color: pItemMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.14) : (root.currentPreset === modelData ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.25) : "transparent")
+                    color: pItemMouse.containsMouse ? Theme.surfaceHover : (root.currentPreset === modelData ? Theme.alphaColor(Theme.accent, 0.25) : "transparent")
 
                     MouseArea {
                         id: pItemMouse
@@ -290,7 +359,7 @@ Rectangle {
                         font.family: Theme.fontFamily
                         font.pixelSize: 11
                         font.weight: root.currentPreset === modelData ? Font.DemiBold : Font.Normal
-                        color: root.currentPreset === modelData ? Theme.accent : "#ffffff"
+                        color: root.currentPreset === modelData ? Theme.accent : Theme.text
                     }
                 }
             }

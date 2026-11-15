@@ -10,7 +10,7 @@ Singleton {
     readonly property string repoDir: Quickshell.env("SMARTSHOT_DIR")
         || (Quickshell.env("XDG_DATA_HOME") ? (Quickshell.env("XDG_DATA_HOME") + "/hyprsmartshot") : (Quickshell.env("HOME") + "/.local/share/hyprsmartshot"))
     readonly property string configDir: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/hyprsmartshot"
-    readonly property string configJsonPath: configDir + "/config.json"
+    readonly property string configJsonPath: Quickshell.env("SMARTSHOT_CONFIG") || (configDir + "/config.json")
     readonly property string defaultJsonPath: repoDir + "/config/hyprsmartshot/config.json"
 
     function sanitizeLang(code) {
@@ -232,7 +232,21 @@ Singleton {
             "ocrNoTextTitle": "OCR Result",
             "ocrNoTextDesc": "No text detected in selection",
             "ocrNotFoundTitle": "OCR Tool Not Found",
-            "ocrNotFoundDesc": "Tesseract not installed. Image copied to clipboard."
+            "ocrNotFoundDesc": "Tesseract not installed. Image copied to clipboard.",
+            "aiDetect": "AI Box",
+            "aiAction": "AI Vision",
+            "aiOcr": "AI OCR",
+            "aiDescribe": "AI Describe",
+            "settings": "Settings",
+            "tagAi": "AI 󰚩 • ",
+            "aiDisabledTitle": "AI Vision Disabled",
+            "aiDisabledDesc": "Enable AI provider in Settings to run AI detection or Vision actions.",
+            "aiDoneTitle": "AI Vision Completed",
+            "aiDoneDesc": "AI result copied to clipboard",
+            "aiFailTitle": "AI Vision Error",
+            "aiFailDesc": "Could not reach configured AI provider.",
+            "ratePositive": "Boosted similar boxes",
+            "rateNegative": "Suppressed noisy box"
         },
         "cs": {
             "modeSmart": "Smart",
@@ -244,8 +258,8 @@ Singleton {
             "ocr": "OCR",
             "cancel": "Zrušit",
             "close": "Zavřít",
-            "hintConfirmed": "󰆏 [Enter/Ctrl+C] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰐃 [P] Připnout  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  󰒉 [Šipky] Doladit  •  [Alt+Šipky] Velikost  •  [Esc] Zrušit",
-            "hintUnconfirmed": "󰓥 [Klik] Potvrdit výběr  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko] Hloubka / Grid  •  󰍉 [Alt] Lupa  •  [1-2] Režimy  •  [Esc] Zavřít",
+            "hintConfirmed": "󰆏 [Enter/Ctrl+C] Kopírovat  •  󰆓 [Ctrl+S] Uložit  •  󰐃 [P] Připnout  •  󰏫 [A] Anotovat  •  󰉐 [O] OCR  •  [+/-] Hodnotit  •  󰒉 [Šipky] Doladit  •  [Esc] Zrušit",
+            "hintUnconfirmed": "󰓥 [Klik] Potvrdit  •  [Tažení] Vlastní oblast  •  󰒉 [Kolečko/Tab] Výběr  •  󰚩 [I] AI Boxy  •  [S] Nastavení  •  󰍉 [Alt] Lupa  •  [Esc] Zavřít",
             "tagGrid": "Grid 󰕰 • ",
             "tagRow": "Řádek 󰒉 • ",
             "tagFloating": "Plovoucí",
@@ -274,7 +288,21 @@ Singleton {
             "ocrNoTextTitle": "Výsledek OCR",
             "ocrNoTextDesc": "Ve výběru nebyl rozpoznán žádný text",
             "ocrNotFoundTitle": "OCR nástroj nenalezen",
-            "ocrNotFoundDesc": "Tesseract není nainstalován. Výřez byl zkopírován jako obrázek."
+            "ocrNotFoundDesc": "Tesseract není nainstalován. Výřez byl zkopírován jako obrázek.",
+            "aiDetect": "AI Box",
+            "aiAction": "AI Vize",
+            "aiOcr": "AI OCR",
+            "aiDescribe": "AI Popis",
+            "settings": "Nastavení",
+            "tagAi": "AI 󰚩 • ",
+            "aiDisabledTitle": "AI Vize vypnutá",
+            "aiDisabledDesc": "Zapni AI providera v Nastavení pro AI boxy nebo AI Vizi.",
+            "aiDoneTitle": "AI Vize dokončena",
+            "aiDoneDesc": "Výstup AI byl zkopírován do schránky",
+            "aiFailTitle": "Chyba AI Vize",
+            "aiFailDesc": "Nepodařilo se spojit s nakonfigurovaným AI providerem.",
+            "ratePositive": "Podobné boxy zvýhodněny",
+            "rateNegative": "Šumový box potlačen"
         }
     })
 
@@ -353,7 +381,8 @@ Singleton {
             case "text": return t("tagText");
             case "text_block": return t("tagParagraph");
             case "screen": return t("tagScreen");
-            default: return "";
+            case "ai": return cur.label ? `AI [${cur.label.slice(0, 14)}] 󰚩 • ` : t("tagAi");
+            default: return cur && cur.source === "ai" ? (cur.label ? `AI [${cur.label.slice(0, 14)}] 󰚩 • ` : t("tagAi")) : "";
         }
     }
 }

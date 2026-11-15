@@ -12,6 +12,8 @@ Scope {
     property string activeScreenName: hyprlandMonitor ? hyprlandMonitor.name : (Quickshell.screens.length > 0 ? Quickshell.screens[0].name : "")
     property string mode: Quickshell.env("SMARTSHOT_MODE") || "universal"
     property bool magnifierActive: false
+    property bool settingsOpen: false
+    property string statusToast: ""
 
     readonly property real envMonitorX: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0")
     readonly property real envMonitorY: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0")
@@ -21,7 +23,57 @@ Scope {
     }
     readonly property real envMonitorW: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_W") || "1920")
     readonly property real envMonitorH: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_H") || "1080")
-    readonly property string picturesDir: (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots"
+    readonly property string picturesDir: {
+        const custom = (typeof Config !== "undefined" && Config && Config.capture && Config.capture.defaultSaveDir)
+            ? String(Config.capture.defaultSaveDir).trim() : "";
+        if (custom.length > 0) {
+            return custom.indexOf("~/") === 0 ? (Quickshell.env("HOME") + custom.slice(1)) : custom;
+        }
+        return (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
+    }
+
+    function showToastMessage(msg) {
+        root.statusToast = String(msg || "");
+        statusToastTimer.restart();
+    }
+
+    function resolvePythonCmd() {
+        const dir = Quickshell.env("SMARTSHOT_DIR") || ".";
+        const pyEnv = Quickshell.env("SMARTSHOT_PYTHON") || "";
+        if (pyEnv) return pyEnv;
+        return dir + "/.venv/bin/python";
+    }
+
+    function recordRatingFeedback(liked, boxData, silent) {
+        const ratingCfg = (typeof Config !== "undefined" && Config && Config.rating) ? Config.rating : {};
+        if (ratingCfg.enabled === false || ratingCfg.adaptiveLearning === false) return;
+        if (!boxData || (boxData.source !== "cv" && boxData.source !== "ai")) return;
+
+        const dir = Quickshell.env("SMARTSHOT_DIR") || ".";
+        const py = resolvePythonCmd();
+        const pyEsc = shellEscape(py);
+        const scriptEsc = shellEscape(dir + "/vision/rating.py");
+        const bType = shellEscape(boxData.type || "detected");
+        const bw = Math.round(boxData.w || selector.selectionWidth || 0);
+        const bh = Math.round(boxData.h || selector.selectionHeight || 0);
+        const preset = shellEscape(selector.activePresetKey || "default");
+        const dislikeFlag = liked ? "" : " --dislike";
+
+        const cmd = `${pyEsc} ${scriptEsc} --feedback --type ${bType} --w ${bw} --h ${bh} --preset ${preset}${dislikeFlag} >/dev/null 2>&1 || python3 ${scriptEsc} --feedback --type ${bType} --w ${bw} --h ${bh} --preset ${preset}${dislikeFlag} >/dev/null 2>&1`;
+        Quickshell.execDetached(["sh", "-c", cmd]);
+
+        if (!silent) {
+            const msg = (liked ? "+ " + I18n.t("ratePositive") : "− " + I18n.t("rateNegative")) + ` (${boxData.type || "box"})`;
+            showToastMessage(msg);
+        }
+    }
+
+    Timer {
+        id: statusToastTimer
+        interval: 3200
+        repeat: false
+        onTriggered: root.statusToast = ""
+    }
 
     function shellEscape(s) {
         if (s === undefined || s === null) return "''";
@@ -73,6 +125,7 @@ Scope {
 
     function doCopy(x, y, width, height) {
         try {
+            recordRatingFeedback(true, selector.selectedCandidate, true);
             const tempCrop = `/tmp/hyprsmartshot_crop_${Date.now()}.png`;
             const crop = cropCommand(x, y, width, height, tempCrop, 0);
             const title = I18n.t("copyTitle");
@@ -91,15 +144,20 @@ Scope {
 
     function doSave(x, y, width, height) {
         try {
+            recordRatingFeedback(true, selector.selectedCandidate, true);
             const saveDir = root.picturesDir;
             const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss");
             const outputPath = `${saveDir}/screenshot-${timestamp}.png`;
-            const crop = cropCommand(x, y, width, height, outputPath, 4);
+            const comp = (typeof Config !== "undefined" && Config && Config.capture && Config.capture.pngCompression !== undefined)
+                ? Number(Config.capture.pngCompression) : 4;
+            const copyAfter = !(typeof Config !== "undefined" && Config && Config.capture && Config.capture.copyAfterSave === false);
+            const crop = cropCommand(x, y, width, height, outputPath, comp);
             const title = I18n.t("saveTitle");
             const desc = I18n.t("saveDesc").replace("{path}", outputPath);
             const hook = (typeof Config !== "undefined" && Config && Config.postSaveHook) ? Config.postSaveHook.trim() : "";
             const hookCmd = hook ? ` && (${hook.replace(/\{path\}/g, shellEscape(outputPath))})` : "";
-            const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && (caelestia-toast -t success -i save -a "HyprSmartShot" ${shellEscape(title)} ${shellEscape(desc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} -h string:image-path:${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)})${hookCmd}`;
+            const copyCmd = copyAfter ? ` && wl-copy --type image/png < ${shellEscape(outputPath)}` : "";
+            const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop}${copyCmd} && (caelestia-toast -t success -i save -a "HyprSmartShot" ${shellEscape(title)} ${shellEscape(desc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} -h string:image-path:${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)})${hookCmd}`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
         } catch (e) {
@@ -111,11 +169,14 @@ Scope {
 
     function doPin(x, y, width, height) {
         try {
+            recordRatingFeedback(true, selector.selectedCandidate, true);
             const tempCrop = `/tmp/hyprsmartshot_pin_${Date.now()}.png`;
             const crop = cropCommand(x, y, width, height, tempCrop, 0);
             const title = I18n.t("pinTitle");
             const desc = I18n.t("pinDesc");
-            const pinCmd = `if command -v hyprsmartshot-pin >/dev/null 2>&1; then hyprsmartshot-pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; elif [ -n "$SMARTSHOT_DIR" ] && [ -x "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ]; then "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; else hyprsmartshot pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; fi`;
+            const themeFlags = `--border-color ${shellEscape(String(Theme.pinBorder))} --bg-color ${shellEscape(String(Theme.cardBackground))} --border-width ${Math.max(1, Math.round(Theme.outlineThickness))}`;
+            const pinArgs = `${themeFlags} ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}`;
+            const pinCmd = `if command -v hyprsmartshot-pin >/dev/null 2>&1; then hyprsmartshot-pin ${pinArgs}; elif [ -n "$SMARTSHOT_DIR" ] && [ -x "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ]; then "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ${pinArgs}; else hyprsmartshot pin ${pinArgs}; fi`;
             const cmd = `${crop} && (caelestia-toast -t info -i push_pin -a "HyprSmartShot" ${shellEscape(title)} ${shellEscape(desc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} -h string:image-path:${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)}) && (${pinCmd}; (sleep 10 && rm -f ${shellEscape(tempCrop)}) >/dev/null 2>&1 &) &`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
@@ -128,6 +189,7 @@ Scope {
 
     function doAnnotate(x, y, width, height) {
         try {
+            recordRatingFeedback(true, selector.selectedCandidate, true);
             const saveDir = root.picturesDir;
             const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss");
             const outputPath = `${saveDir}/annotation-${timestamp}.png`;
@@ -197,6 +259,47 @@ Scope {
         }
     }
 
+    function doAiVisionAction(x, y, width, height, actionMode) {
+        const aiCfg = (typeof Config !== "undefined" && Config && Config.ai) ? Config.ai : {};
+        if (aiCfg.enabled !== true) {
+            showToastMessage(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
+            settingsModal.activeTab = "ai";
+            root.settingsOpen = true;
+            return;
+        }
+        try {
+            const tempCrop = `/tmp/hyprsmartshot_aiv_${Date.now()}.png`;
+            const crop = cropCommand(x, y, width, height, tempCrop, 0);
+            const dir = Quickshell.env("SMARTSHOT_DIR") || ".";
+            const py = resolvePythonCmd();
+            const script = dir + "/vision/ai_detector.py";
+            const cfgPath = Quickshell.env("SMARTSHOT_MERGED_CONFIG") || Quickshell.env("SMARTSHOT_CONFIG") || "";
+            const cfgArg = cfgPath ? ` --config ${shellEscape(cfgPath)}` : "";
+            const okTitle = I18n.t("aiDoneTitle");
+            const failTitle = I18n.t("aiFailTitle");
+            const failDesc = I18n.t("aiFailDesc");
+
+            const cmd = `${crop} && {
+                OUT=$(${shellEscape(py)} ${shellEscape(script)} --action ${shellEscape(actionMode)} ${shellEscape(tempCrop)}${cfgArg} 2>/tmp/hyprsmartshot_ai.err || true)
+                if printf '%s' "$OUT" | grep -q '[^[:space:]]'; then
+                    printf '%s' "$OUT" | wl-copy
+                    PREVIEW=$(printf '%s' "$OUT" | tr '\\n' ' ' | cut -c1-120)
+                    caelestia-toast -t success -i auto_awesome -a "HyprSmartShot" ${shellEscape(okTitle)} "$PREVIEW" || notify-send -a "HyprSmartShot" ${shellEscape(okTitle)} "$PREVIEW"
+                else
+                    ERR=$(head -n 2 /tmp/hyprsmartshot_ai.err 2>/dev/null || true)
+                    caelestia-toast -t error -i error -a "HyprSmartShot" ${shellEscape(failTitle)} "\${ERR:-${failDesc}}" || notify-send -a "HyprSmartShot" ${shellEscape(failTitle)} "\${ERR:-${failDesc}}"
+                fi
+                rm -f ${shellEscape(tempCrop)} /tmp/hyprsmartshot_ai.err
+            }`;
+            playShutterSound();
+            Quickshell.execDetached(["sh", "-c", cmd]);
+        } catch (e) {
+            console.error("[HyprSmartShot] Error in doAiVisionAction:", e);
+        } finally {
+            root.closeOverlay();
+        }
+    }
+
     FreezeScreen {
         id: freezeWindow
         onVisibleChanged: if (visible && typeof keyboardHandler !== 'undefined') keyboardHandler.forceActiveFocus()
@@ -218,6 +321,10 @@ Scope {
             onPinAction: (x, y, w, h) => root.doPin(x, y, w, h)
             onAnnotateAction: (x, y, w, h) => root.doAnnotate(x, y, w, h)
             onOcrAction: (x, y, w, h) => root.doOcr(x, y, w, h)
+            onAiOcrAction: (x, y, w, h) => root.doAiVisionAction(x, y, w, h, "ocr")
+            onAiDescribeAction: (x, y, w, h) => root.doAiVisionAction(x, y, w, h, "describe")
+            onRateFeedbackAction: (liked, boxData) => root.recordRatingFeedback(liked, boxData, false)
+            onAiStatusChanged: (msg) => root.showToastMessage(msg)
             onCancelRequested: root.closeOverlay()
 
             onActivePresetKeyChanged: {
@@ -237,6 +344,8 @@ Scope {
             currentMode: root.mode
             currentPreset: selector.activePresetKey
             magnifierActive: root.magnifierActive
+            aiActive: selector.aiActive
+            aiLoading: selector.aiLoading
 
             onModeSelected: (modeId) => {
                 root.mode = modeId;
@@ -247,6 +356,20 @@ Scope {
                 selector.activePresetKey = presetKey;
             }
             onToggleMagnifierRequested: root.magnifierActive = !root.magnifierActive
+            onAiDetectRequested: {
+                const aiCfg = (typeof Config !== "undefined" && Config && Config.ai) ? Config.ai : {};
+                if (aiCfg.enabled !== true) {
+                    root.showToastMessage(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
+                    settingsModal.activeTab = "ai";
+                    root.settingsOpen = true;
+                } else {
+                    selector.requestAiDetection();
+                }
+            }
+            onSettingsRequested: {
+                root.settingsOpen = !root.settingsOpen;
+                if (!root.settingsOpen) keyboardHandler.forceActiveFocus();
+            }
             onCloseRequested: root.closeOverlay()
         }
 
@@ -255,21 +378,48 @@ Scope {
             id: magnifier
             active: root.magnifierActive
             sourceImage: freezeWindow.backgroundImage
+            zoomFactor: (typeof Config !== "undefined" && Config && Config.ui && Config.ui.magnifierZoom) ? Number(Config.ui.magnifierZoom) : 4
             targetX: selector.cursorX
             targetY: selector.cursorY
             z: 40
         }
 
+        // Live Toast Banner (AI status / feedback)
+        Rectangle {
+            visible: root.statusToast.length > 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: controlBar.bottom
+            anchors.topMargin: 10
+            height: 28
+            width: toastTxt.implicitWidth + 24
+            radius: 14
+            color: Theme.barBackground
+            border.color: Theme.aiAccent
+            border.width: 1
+            z: 50
+
+            Text {
+                id: toastTxt
+                anchors.centerIn: parent
+                text: root.statusToast
+                font.family: Theme.fontFamily
+                font.pixelSize: 11
+                font.weight: Font.Medium
+                color: Theme.text
+            }
+        }
+
         // Bottom Hint Bar
         Rectangle {
             id: bottomHintBar
+            visible: !(typeof Config !== "undefined" && Config && Config.ui && Config.ui.showHints === false)
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 20
             height: 30
             width: hintText.implicitWidth + 24
             radius: 15
-            color: Qt.rgba(0.08, 0.08, 0.10, 0.85)
+            color: Theme.barBackground
             border.color: Theme.barBorder
             border.width: 1
             z: 30
@@ -284,6 +434,24 @@ Scope {
             }
         }
 
+        SettingsModal {
+            id: settingsModal
+            open: root.settingsOpen
+            onCloseRequested: {
+                root.settingsOpen = false;
+                keyboardHandler.forceActiveFocus();
+            }
+            onApplied: (patch) => {
+                root.showToastMessage(I18n.t("settings"));
+                if (patch && patch.theme && patch.theme.syncSatty) {
+                    const dir = Quickshell.env("SMARTSHOT_DIR") || ".";
+                    const py = root.resolvePythonCmd();
+                    const sc = dir + "/vision/config_loader.py";
+                    Quickshell.execDetached(["sh", "-c", `${root.shellEscape(py)} ${root.shellEscape(sc)} --sync-satty >/dev/null 2>&1 || python3 ${root.shellEscape(sc)} --sync-satty >/dev/null 2>&1`]);
+                }
+            }
+        }
+
         // Keyboard Handler
         Item {
             id: keyboardHandler
@@ -292,7 +460,10 @@ Scope {
 
             Keys.onEscapePressed: (event) => {
                 event.accepted = true;
-                if (controlBar.presetDropdownOpen) {
+                if (root.settingsOpen) {
+                    root.settingsOpen = false;
+                    keyboardHandler.forceActiveFocus();
+                } else if (controlBar.presetDropdownOpen) {
                     controlBar.presetDropdownOpen = false;
                 } else if (selector.closePopups()) {
                     return;
@@ -303,18 +474,24 @@ Scope {
                 }
             }
             Keys.onReturnPressed: (event) => {
+                if (root.settingsOpen) { event.accepted = false; return; }
                 event.accepted = true;
                 if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
                     root.doCopy(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
                 }
             }
             Keys.onSpacePressed: (event) => {
+                if (root.settingsOpen) { event.accepted = false; return; }
                 event.accepted = true;
                 if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
                     root.doCopy(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
                 }
             }
             Keys.onPressed: (event) => {
+                if (root.settingsOpen) {
+                    event.accepted = false;
+                    return;
+                }
 
                 // Q or Ctrl+Q: Close Overlay
                 if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Q) || (!selector.isConfirmed && event.key === Qt.Key_Q)) {
@@ -363,6 +540,39 @@ Scope {
                     if (selector.selectionWidth > 0 && selector.selectionHeight > 0) {
                         root.doOcr(selector.selectionX, selector.selectionY, selector.selectionWidth, selector.selectionHeight);
                     }
+                    event.accepted = true;
+                    return;
+                }
+
+                // I: AI Box Detection (or open AI settings when disabled)
+                if (event.key === Qt.Key_I) {
+                    const aiCfg = (typeof Config !== "undefined" && Config && Config.ai) ? Config.ai : {};
+                    if (aiCfg.enabled !== true) {
+                        root.showToastMessage(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
+                        settingsModal.activeTab = "ai";
+                        root.settingsOpen = true;
+                    } else {
+                        selector.requestAiDetection();
+                    }
+                    event.accepted = true;
+                    return;
+                }
+
+                // Comma (,): Open Settings Modal
+                if (event.key === Qt.Key_Comma) {
+                    root.settingsOpen = !root.settingsOpen;
+                    event.accepted = true;
+                    return;
+                }
+
+                // + / -: Rate active CV/AI candidate box
+                if (selector.isConfirmed && selector.selectedCandidate && (event.key === Qt.Key_Plus || event.key === Qt.Key_Equal)) {
+                    root.recordRatingFeedback(true, selector.selectedCandidate, false);
+                    event.accepted = true;
+                    return;
+                }
+                if (selector.isConfirmed && selector.selectedCandidate && event.key === Qt.Key_Minus) {
+                    root.recordRatingFeedback(false, selector.selectedCandidate, false);
                     event.accepted = true;
                     return;
                 }

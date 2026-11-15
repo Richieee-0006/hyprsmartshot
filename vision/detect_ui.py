@@ -9,8 +9,16 @@ import sys
 import os
 import json
 import time
+import argparse
 import cv2
 import numpy as np
+
+_VISION_DIR = os.path.dirname(os.path.abspath(__file__))
+if _VISION_DIR not in sys.path:
+    sys.path.insert(0, _VISION_DIR)
+
+from config_loader import load_config
+from rating import rate_and_filter_boxes
 
 def compute_iou(b1, b2):
     """Computes Intersection over Union (IoU) between two bounding boxes."""
@@ -578,62 +586,98 @@ def detect_window_content_areas(gray, client_boxes):
 
     return content_boxes
 
-def cluster_text_paragraphs(text_lines, min_lines=2):
-    """Clusters vertically adjacent text lines into full paragraph text_block bounding boxes."""
+def _make_text_block(lines):
+    px = min(l['x'] for l in lines)
+    py = min(l['y'] for l in lines)
+    pw = max(l['x'] + l['w'] for l in lines) - px
+    ph = max(l['y'] + l['h'] for l in lines) - py
+    return {
+        'x': int(px),
+        'y': int(py),
+        'w': int(pw),
+        'h': int(ph),
+        'area': int(pw * ph),
+        'extent': 0.96,
+        'contrast': 35.0,
+        'type': 'text_block'
+    }
+
+
+def cluster_text_paragraphs(text_lines, min_lines=2, multi_column=True):
+    """Clusters vertically adjacent text lines into column-aware paragraph bounding boxes."""
     if len(text_lines) < min_lines:
         return []
 
     sorted_lines = sorted(text_lines, key=lambda b: (b['y'], b['x']))
-    paragraphs = []
-    current_para = [sorted_lines[0]]
+    if not multi_column:
+        paragraphs = []
+        current_para = [sorted_lines[0]]
+        for line in sorted_lines[1:]:
+            last = current_para[-1]
+            vgap = line['y'] - (last['y'] + last['h'])
+            max_vgap = max(18, min(26, int(last['h'] * 1.35)))
+            overlap_w = min(last['x'] + last['w'], line['x'] + line['w']) - max(last['x'], line['x'])
+            aligned = (overlap_w > 0) or (abs(line['x'] - last['x']) <= 36)
+            if -6 <= vgap <= max_vgap and aligned:
+                current_para.append(line)
+            else:
+                if len(current_para) >= min_lines:
+                    paragraphs.append(_make_text_block(current_para))
+                current_para = [line]
+        if len(current_para) >= min_lines:
+            paragraphs.append(_make_text_block(current_para))
+        return paragraphs
 
-    for line in sorted_lines[1:]:
-        last = current_para[-1]
-        vgap = line['y'] - (last['y'] + last['h'])
-        max_vgap = max(32, int(last['h'] * 1.6))
+    # Group lines into independent horizontal column tracks before vertical termination
+    active_cols = []
+    finished = []
+    for line in sorted_lines:
+        lx1 = line['x']
+        lx2 = lx1 + line['w']
+        ly = line['y']
+        best_idx = -1
+        best_vgap = 10**9
+        still_active = []
 
-        last_x2 = last['x'] + last['w']
-        line_x2 = line['x'] + line['w']
-        overlap_w = min(last_x2, line_x2) - max(last['x'], line['x'])
-        aligned = (overlap_w > 0) or (abs(line['x'] - last['x']) <= 40)
+        for col in active_cols:
+            last = col[-1]
+            vgap = ly - (last['y'] + last['h'])
+            max_vgap = max(18, min(26, int(last['h'] * 1.35)))
+            if vgap > max_vgap:
+                if len(col) >= min_lines:
+                    finished.append(col)
+                continue
+            still_active.append(col)
 
-        if -6 <= vgap <= max_vgap and aligned:
-            current_para.append(line)
+        active_cols = still_active
+        for idx, col in enumerate(active_cols):
+            last = col[-1]
+            vgap = ly - (last['y'] + last['h'])
+            if vgap < -6:
+                continue
+            cx1 = min(l['x'] for l in col)
+            cx2 = max(l['x'] + l['w'] for l in col)
+            cw = cx2 - cx1
+            overlap_w = min(cx2, lx2) - max(cx1, lx1)
+            min_w = max(1, min(cw, line['w']))
+            max_w = max(cw, line['w'])
+            width_ok = (max_w <= 2.8 * min_w) or (abs(lx1 - cx1) <= 28)
+            horiz_ok = (overlap_w >= min_w * 0.22) or (abs(lx1 - cx1) <= 36)
+            if width_ok and horiz_ok and vgap < best_vgap:
+                best_vgap = vgap
+                best_idx = idx
+
+        if best_idx >= 0:
+            active_cols[best_idx].append(line)
         else:
-            if len(current_para) >= min_lines:
-                px = min(l['x'] for l in current_para)
-                py = min(l['y'] for l in current_para)
-                pw = max(l['x'] + l['w'] for l in current_para) - px
-                ph = max(l['y'] + l['h'] for l in current_para) - py
-                paragraphs.append({
-                    'x': int(px),
-                    'y': int(py),
-                    'w': int(pw),
-                    'h': int(ph),
-                    'area': int(pw * ph),
-                    'extent': 0.96,
-                    'contrast': 35.0,
-                    'type': 'text_block'
-                })
-            current_para = [line]
+            active_cols.append([line])
 
-    if len(current_para) >= min_lines:
-        px = min(l['x'] for l in current_para)
-        py = min(l['y'] for l in current_para)
-        pw = max(l['x'] + l['w'] for l in current_para) - px
-        ph = max(l['y'] + l['h'] for l in current_para) - py
-        paragraphs.append({
-            'x': int(px),
-            'y': int(py),
-            'w': int(pw),
-            'h': int(ph),
-            'area': int(pw * ph),
-            'extent': 0.96,
-            'contrast': 35.0,
-            'type': 'text_block'
-        })
+    for col in active_cols:
+        if len(col) >= min_lines:
+            finished.append(col)
 
-    return paragraphs
+    return [_make_text_block(col) for col in finished]
+
 
 def _sat_has_std(gray, sat, sqsat, x, y, w, h, min_std=6.0):
     """Checks std(gray[y:y+h, x:x+w]) >= min_std using integral images when available."""
@@ -650,48 +694,100 @@ def _sat_has_std(gray, sat, sqsat, x, y, w, h, min_std=6.0):
     return bool(roi.size and float(np.std(roi)) >= min_std)
 
 
-def detect_text_regions(gray, orig_w, orig_h, sat=None, sqsat=None):
-    """
-    Detects text lines, code blocks, labels, and paragraph blocks.
-    Uses horizontal morphological gradient to capture character strokes,
-    and directional morphology + coordinate clustering to synthesize entire paragraphs.
-    """
-    # 1. Sobel-x gradient captures vertical character strokes (letters)
-    grad_x = cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3)
-    grad_x = cv2.convertScaleAbs(grad_x)
+def _merge_collinear_text_words(lines):
+    """Joins adjacent horizontal fragments of large headlines on the same baseline row."""
+    if len(lines) < 2:
+        return lines
+    ordered = sorted(lines, key=lambda b: (b['y'], b['x']))
+    merged = []
+    for box in ordered:
+        joined = False
+        if box['h'] >= 24:
+            by1, by2 = box['y'], box['y'] + box['h']
+            for prev in reversed(merged[-6:]):
+                py1, py2 = prev['y'], prev['y'] + prev['h']
+                v_overlap = min(by2, py2) - max(by1, py1)
+                min_h = min(box['h'], prev['h'])
+                if min_h >= 24 and v_overlap >= min_h * 0.55:
+                    gap = box['x'] - (prev['x'] + prev['w'])
+                    max_gap = max(18, int(min_h * 0.65))
+                    if -4 <= gap <= max_gap:
+                        nx = min(prev['x'], box['x'])
+                        ny = min(prev['y'], box['y'])
+                        nx2 = max(prev['x'] + prev['w'], box['x'] + box['w'])
+                        ny2 = max(prev['y'] + prev['h'], box['y'] + box['h'])
+                        prev['x'], prev['y'] = nx, ny
+                        prev['w'], prev['h'] = nx2 - nx, ny2 - ny
+                        prev['area'] = prev['w'] * prev['h']
+                        joined = True
+                        break
+        if not joined:
+            merged.append(box)
+    return merged
 
-    # 2. Horizontal closing connects letters into words and words into lines
+
+def detect_text_regions(gray, orig_w, orig_h, sat=None, sqsat=None, clahe_gray=None, detection_cfg=None):
+    """
+    Detects text lines, code blocks, display headers, and multi-column paragraphs.
+    Fuses Otsu with local contrast-enhanced gradients so dim text isn't suppressed
+    by bright headlines on the same screen.
+    """
+    dcfg = detection_cfg if isinstance(detection_cfg, dict) else {}
+    adaptive_text = bool(dcfg.get("adaptiveTextThreshold", True))
+    filter_icons = bool(dcfg.get("filterIconsFromText", True))
+    multi_col = bool(dcfg.get("multiColumnParagraphs", True))
+    max_header_h = int(dcfg.get("maxHeaderHeight", 96) or 96)
+
+    grad_x = cv2.convertScaleAbs(cv2.Sobel(gray, cv2.CV_32F, 1, 0, ksize=3))
     k_line = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 3))
     closed_line = cv2.morphologyEx(grad_x, cv2.MORPH_CLOSE, k_line)
     _, thresh_line = cv2.threshold(closed_line, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+    min_std = 6.0
+    if adaptive_text:
+        if clahe_gray is None:
+            clahe_gray = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8)).apply(gray)
+        grad_cl = cv2.convertScaleAbs(cv2.Sobel(clahe_gray, cv2.CV_32F, 1, 0, ksize=3))
+        closed_cl = cv2.morphologyEx(grad_cl, cv2.MORPH_CLOSE, k_line)
+        _, thresh_cl = cv2.threshold(closed_cl, 48, 255, cv2.THRESH_BINARY)
+        thresh_line = cv2.bitwise_or(thresh_line, thresh_cl)
+        min_std = 4.5
+
     contours_line, _ = cv2.findContours(thresh_line, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    text_boxes = []
+    raw_lines = []
 
     for cnt in contours_line:
         x, y, w, h = cv2.boundingRect(cnt)
-        if w >= 20 and 8 <= h <= 54:
-            # Check internal pixel standard deviation to ensure it contains texture/glyphs
-            if _sat_has_std(gray, sat, sqsat, x, y, w, h, 6.0):
-                text_boxes.append({
-                    'x': int(x),
-                    'y': int(y),
-                    'w': int(w),
-                    'h': int(h),
-                    'area': int(w * h),
-                    'extent': 0.95,
-                    'contrast': 30.0,
-                    'type': 'text'
-                })
+        if w < 18 or h < 8 or h > max_header_h:
+            continue
+        if _sat_has_std(gray, sat, sqsat, x, y, w, h, min_std):
+            raw_lines.append({
+                'x': int(x),
+                'y': int(y),
+                'w': int(w),
+                'h': int(h),
+                'area': int(w * h),
+                'extent': 0.95,
+                'contrast': 30.0,
+                'type': 'text'
+            })
+
+    text_boxes = _merge_collinear_text_words(raw_lines)
+    if filter_icons:
+        text_boxes = [
+            b for b in text_boxes
+            if not (b['w'] <= 56 and b['h'] >= 22 and (b['w'] / float(b['h'])) < 1.55)
+        ]
 
     # Synthesize multi-line paragraph blocks from detected text lines
     para_boxes = [
-        p for p in cluster_text_paragraphs(text_boxes)
+        p for p in cluster_text_paragraphs(text_boxes, multi_column=multi_col)
         if not (p['w'] >= orig_w * 0.85 and p['h'] >= orig_h * 0.65)
+        and not (filter_icons and (p['w'] < 48 or (p['w'] / float(p['h'])) < 0.80))
     ]
     text_boxes.extend(para_boxes)
 
-    # 3. Morphological closing on the line mask to also capture dense text/code blocks
+    # 3. Morphological closing on the line mask to capture dense code/text blocks
     k_para_h = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 1))
     closed_h = cv2.morphologyEx(thresh_line, cv2.MORPH_CLOSE, k_para_h)
     k_para_v = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 14))
@@ -702,9 +798,17 @@ def detect_text_regions(gray, orig_w, orig_h, sat=None, sqsat=None):
         x, y, w, h = cv2.boundingRect(cnt)
         if w >= orig_w * 0.85 and h >= orig_h * 0.65:
             continue
-        # Paragraphs must have substantial height (at least 2 lines) and width
+        if filter_icons and (w < 48 or (w / float(h)) < 0.80):
+            continue
+        # Skip single-line display header already captured as 'text'
+        is_single_line = any(
+            abs(t['x'] - x) <= 6 and abs(t['y'] - y) <= 6 and abs(t['w'] - w) <= 10 and abs(t['h'] - h) <= 10
+            for t in text_boxes if t['type'] == 'text'
+        )
+        if is_single_line:
+            continue
         if w >= 36 and h >= 26 and (w * h) >= 1000:
-            if _sat_has_std(gray, sat, sqsat, x, y, w, h, 6.0):
+            if _sat_has_std(gray, sat, sqsat, x, y, w, h, min_std):
                 text_boxes.append({
                     'x': int(x),
                     'y': int(y),
@@ -725,8 +829,42 @@ def is_duplicate(a, b, tol=5):
             abs(a['w'] - b['w']) <= tol * 1.5 and
             abs(a['h'] - b['h']) <= tol * 1.5)
 
-def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_ratio=0.98):
+def _resolve_active_preset(cfg, preset_key=None):
+    if preset_key:
+        return str(preset_key)
+    env_preset = os.environ.get("SMARTSHOT_PRESET", "").strip()
+    if env_preset:
+        return env_preset
+    app_cls = os.environ.get("SMARTSHOT_ACTIVE_CLASS", "").strip().lower()
+    if app_cls and isinstance(cfg.get("appRules"), dict):
+        for rule, target in cfg["appRules"].items():
+            if rule.lower() in app_cls:
+                return str(target)
+    return str(cfg.get("activePreset", "default") or "default")
+
+
+def detect_ui_elements(image_path, clients_path=None, min_area=None, max_area_ratio=None, config=None, preset_key=None):
     start_time = time.time()
+
+    if config is not None:
+        cfg = config
+    elif os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("SMARTSHOT_CONFIG"):
+        from config_loader import DEFAULT_CONFIG
+        cfg = DEFAULT_CONFIG
+    else:
+        cfg = load_config()
+
+    det_cfg = cfg.get("detection", {}) if isinstance(cfg, dict) else {}
+    if min_area is None:
+        min_area = int(det_cfg.get("minArea", 64) or 64)
+    if max_area_ratio is None:
+        max_area_ratio = float(det_cfg.get("maxAreaRatio", 0.98) or 0.98)
+    tiny_contrast_min = float(det_cfg.get("tinyContrastMin", 4.5) or 4.5)
+    enable_panels = bool(det_cfg.get("enablePanels", True))
+    enable_grids = bool(det_cfg.get("enableGrids", True))
+    enable_win_content = bool(det_cfg.get("enableWindowContent", True))
+    enable_text = bool(det_cfg.get("enableText", True))
+    effective_preset = _resolve_active_preset(cfg, preset_key=preset_key)
 
     img = cv2.imread(image_path)
     if img is None:
@@ -861,7 +999,8 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
             pass
 
     # 5. Find contours separately on sharp UI borders and blurred panel morphs
-    for is_panel_morph, mask in ((False, closed_edges), (True, panel_mask)):
+    mask_passes = ((False, closed_edges), (True, panel_mask)) if enable_panels else ((False, closed_edges),)
+    for is_panel_morph, mask in mask_passes:
         contours, _ = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
         for cnt in contours:
             x, y, w, h = cv2.boundingRect(cnt)
@@ -895,6 +1034,8 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                 continue
 
             is_big_panel = (w >= 220 and h >= 140)
+            avg_edge = None
+            in_ed = None
             if not is_panel_morph and not is_big_panel:
                 if nv < 4:
                     continue
@@ -918,7 +1059,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
             valid, contrast = is_valid_border(gray, x, y, w, h, sat=sat)
             if not valid:
                 continue
-            if not is_panel_morph and w < 48 and h < 48 and contrast < 4.5:
+            if not is_panel_morph and w < 48 and h < 48 and contrast < tiny_contrast_min:
                 continue
 
             if is_panel_morph:
@@ -932,7 +1073,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                 elif 20 <= w <= 800 and 12 <= h <= 64:
                     elem_type = "input" if w > 260 else "button"
 
-            raw_boxes.append({
+            box_entry = {
                 "x": int(x),
                 "y": int(y),
                 "w": int(w),
@@ -941,7 +1082,12 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                 "extent": round(extent, 2),
                 "contrast": round(contrast, 1),
                 "type": elem_type
-            })
+            }
+            if avg_edge is not None:
+                box_entry["edge_score"] = round(avg_edge, 3)
+            if in_ed is not None:
+                box_entry["interior_edge"] = round(in_ed, 3)
+            raw_boxes.append(box_entry)
 
     # Suppress periodic mesh / background texture tiling (e.g. 14+ identical tiles with low contrast)
     size_bins = {}
@@ -977,16 +1123,19 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                         break
 
     # 3. Synthesize inventory rows and grid containers from clean slots
-    synthesized = cluster_slots_and_grids(deduped_raw)
+    synthesized = cluster_slots_and_grids(deduped_raw) if enable_grids else []
 
     # 3b. Synthesize composite panels / columns into unified parent containers (web page body / split panels)
-    column_unions = cluster_adjacent_columns(deduped_raw)
+    column_unions = cluster_adjacent_columns(deduped_raw) if enable_panels else []
 
     # 3c. Detect window content viewports (web page body below browser header)
-    window_content_areas = detect_window_content_areas(gray, client_boxes)
+    window_content_areas = detect_window_content_areas(gray, client_boxes) if enable_win_content else []
 
     # 3d. Detect text lines, code snippets, labels, and paragraph blocks
-    text_regions = detect_text_regions(gray, orig_w, orig_h, sat=sat, sqsat=sqsat)
+    text_regions = (
+        detect_text_regions(gray, orig_w, orig_h, sat=sat, sqsat=sqsat, clahe_gray=cl, detection_cfg=det_cfg)
+        if enable_text else []
+    )
 
     all_boxes = deduped_raw + synthesized + column_unions + window_content_areas + text_regions
 
@@ -1011,8 +1160,19 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
         b["area"] = int(bw * bh)
         clamped_boxes.append(b)
 
+    # Apply heuristic + adaptive rating system and confidence floor
+    profile_arg = None
+    if os.environ.get("PYTEST_CURRENT_TEST") and not os.environ.get("SMARTSHOT_RATING_PROFILE"):
+        profile_arg = "__pytest_isolated__"
+    rated_boxes = rate_and_filter_boxes(
+        clamped_boxes,
+        active_preset=effective_preset,
+        config=cfg,
+        profile_path=profile_arg,
+    )
+
     # Semantic hierarchy depth calculation
-    boxes_asc = sorted(clamped_boxes, key=lambda b: b["area"])
+    boxes_asc = sorted(rated_boxes, key=lambda b: b["area"])
     n_boxes = len(boxes_asc)
     for i, box in enumerate(boxes_asc):
         box["id"] = i
@@ -1037,29 +1197,36 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     return {
         "screen_width": orig_w,
         "screen_height": orig_h,
+        "preset": effective_preset,
         "count": len(final_boxes),
         "elapsed_ms": elapsed_ms,
         "boxes": final_boxes
     }
 
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "Usage: detect_ui.py <image_path> [output_json_path] [clients_json_path]"}))
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="HyprSmartShot UI Detector")
+    parser.add_argument("image_path", help="Path to captured screen image")
+    parser.add_argument("output_path", nargs="?", default=None, help="Output JSON path")
+    parser.add_argument("clients_path", nargs="?", default=None, help="Hyprland clients JSON path")
+    parser.add_argument("--preset", default=None, help="Override preset key for rating/detection")
+    parser.add_argument("--config", default=None, help="Explicit config JSON path")
+    args = parser.parse_args()
 
-    image_path = sys.argv[1]
-    output_path = sys.argv[2] if len(sys.argv) > 2 else None
-    clients_path = sys.argv[3] if len(sys.argv) > 3 else None
-
-    result = detect_ui_elements(image_path, clients_path=clients_path)
+    cfg = load_config(args.config) if args.config else None
+    result = detect_ui_elements(
+        args.image_path,
+        clients_path=args.clients_path,
+        config=cfg,
+        preset_key=args.preset,
+    )
     output_json = json.dumps(result, indent=None)
 
-    if output_path:
-        temp_path = f"{output_path}.tmp.{os.getpid()}"
+    if args.output_path:
+        temp_path = f"{args.output_path}.tmp.{os.getpid()}"
         try:
             with open(temp_path, "w") as f:
                 f.write(output_json)
-            os.replace(temp_path, output_path)
+            os.replace(temp_path, args.output_path)
         except Exception:
             if os.path.exists(temp_path):
                 try:

@@ -213,6 +213,86 @@ class TestConfiguration(unittest.TestCase):
         self.assertIn('preset.filter === "content"', selector_qml)
         self.assertIn("bongocat", selector_qml)
 
+    def test_modular_config_sections_and_qml_components(self):
+        with open(CONFIG_JSON, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        for sec in ("theme", "detection", "rating", "ai", "ui", "capture"):
+            self.assertIn(sec, cfg, f"Missing modular section '{sec}' in default config.json")
+        self.assertFalse(cfg["ai"]["enabled"], "Publishable default must have AI disabled out-of-the-box")
+
+        qmldir_path = os.path.join(REPO_DIR, "components", "qmldir")
+        with open(qmldir_path, "r", encoding="utf-8") as f:
+            qmldir = f.read()
+        self.assertIn("SettingsModal 1.0 SettingsModal.qml", qmldir)
+        self.assertTrue(os.path.isfile(os.path.join(REPO_DIR, "components", "SettingsModal.qml")))
+
+        with open(os.path.join(REPO_DIR, "components", "Theme.qml"), "r", encoding="utf-8") as f:
+            theme_qml = f.read()
+        self.assertNotIn("property color onAccent", theme_qml, "onAccent breaks QML signal-handler naming rules")
+
+    def test_quickshell_theme_pywal_and_settings_modal_smoke(self):
+        if not shutil.which("quickshell"):
+            self.skipTest("quickshell not installed in environment")
+
+        with tempfile.TemporaryDirectory() as tmp_xdg:
+            wal_path = os.path.join(tmp_xdg, "wal_colors.json")
+            with open(wal_path, "w", encoding="utf-8") as f:
+                json.dump({
+                    "special": {"background": "#121318", "foreground": "#e6e7eb"},
+                    "colors": {
+                        "color0": "#121318", "color1": "#123456", "color2": "#22aa55",
+                        "color3": "#ddaa33", "color4": "#3377ff", "color5": "#aa55ff",
+                        "color7": "#c0c2cc", "color8": "#44475a", "color9": "#234567",
+                        "color15": "#e6e7eb",
+                    },
+                }, f)
+
+            cfg_dir = os.path.join(tmp_xdg, "hyprsmartshot")
+            os.makedirs(cfg_dir, exist_ok=True)
+            with open(os.path.join(cfg_dir, "config.json"), "w", encoding="utf-8") as f:
+                json.dump({"theme": {"mode": "pywal", "pywalPath": wal_path}}, f)
+
+            test_qml = f"""
+            import QtQuick
+            import Quickshell
+            import "file://{REPO_DIR}/components"
+
+            Scope {{
+                id: root
+                SettingsModal {{ id: modal; open: false }}
+                Timer {{
+                    interval: 20
+                    repeat: true
+                    running: true
+                    property int ticks: 0
+                    onTriggered: {{
+                        ticks++;
+                        const acc = String(Theme.accent).toLowerCase();
+                        if (acc === "#123456") {{
+                            console.log("THEME_OK:" + acc + "|source=" + Theme.themeSource);
+                            Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
+                        }} else if (ticks > 40) {{
+                            console.log("THEME_FAIL:" + acc + "|source=" + Theme.themeSource);
+                            Quickshell.execDetached(["quickshell", "kill", "--pid", Quickshell.processId.toString()]);
+                        }}
+                    }}
+                }}
+            }}
+            """
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".qml", delete=False) as tf:
+                tf.write(test_qml)
+                tf_path = tf.name
+            try:
+                env = os.environ.copy()
+                env["SMARTSHOT_DIR"] = REPO_DIR
+                env["XDG_CONFIG_HOME"] = tmp_xdg
+                proc = subprocess.run(["quickshell", "-p", tf_path], capture_output=True, text=True, env=env)
+                output = proc.stdout + proc.stderr
+                self.assertIn("THEME_OK:#123456|source=pywal", output)
+            finally:
+                if os.path.exists(tf_path):
+                    os.remove(tf_path)
+
 
 if __name__ == "__main__":
     unittest.main()

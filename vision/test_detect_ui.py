@@ -674,5 +674,56 @@ class TestUIDetector(unittest.TestCase):
         self.assertLessEqual(len(slots), 2, f"Terminal glyphs should not explode into fake slots, got {len(slots)}")
         self.assertEqual(len(mega_text), 0, "Separated text columns should not merge into fullscreen text_block")
 
+    def test_two_column_paragraphs_remain_separate(self):
+        img = np.full((600, 1000, 3), 24, dtype=np.uint8)
+        for row in range(6):
+            y = 100 + row * 32
+            cv2.putText(img, f"Left column paragraph line {row}", (60, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (230, 230, 230), 1)
+            cv2.putText(img, f"Right column paragraph line {row}", (580, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (230, 230, 230), 1)
+        path = self._save_img("two_col.png", img)
+
+        res = detect_ui_elements(path)
+        text_blocks = [b for b in res["boxes"] if b.get("type") == "text_block"]
+        self.assertGreaterEqual(len(text_blocks), 2, f"Expected separate column text_blocks, got {text_blocks}")
+        spanning = [b for b in text_blocks if b["x"] < 200 and (b["x"] + b["w"]) > 750]
+        self.assertEqual(len(spanning), 0, "Left and right columns must not merge across wide center gutter")
+
+    def test_mixed_contrast_bright_and_dim_text_detected(self):
+        img = np.full((400, 800, 3), 24, dtype=np.uint8)
+        # Bright title + dim subtle subtitle/code
+        cv2.putText(img, "BRIGHT HEADLINE TEXT", (60, 100),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.75, (250, 250, 250), 2)
+        cv2.putText(img, "dim gray secondary text block", (60, 240),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.65, (72, 72, 72), 2)
+        path = self._save_img("mixed_contrast_text.png", img)
+
+        res = detect_ui_elements(path)
+        text_boxes = [b for b in res["boxes"] if b.get("type") in ("text", "text_block")]
+        has_bright = any(b["y"] < 140 for b in text_boxes)
+        has_dim = any(b["y"] > 190 for b in text_boxes)
+        self.assertTrue(has_bright and has_dim, f"Both bright and dim text should be detected: {text_boxes}")
+
+    def test_dock_icons_excluded_from_text_lines(self):
+        img = np.full((300, 800, 3), 22, dtype=np.uint8)
+        for i in range(5):
+            x0 = 180 + i * 80
+            cv2.rectangle(img, (x0, 110), (x0 + 48, 158), (60 + i * 35, 140, 220), -1)
+        path = self._save_img("dock_icons.png", img)
+
+        res = detect_ui_elements(path)
+        text_boxes = [b for b in res["boxes"] if b.get("type") in ("text", "text_block")]
+        self.assertEqual(len(text_boxes), 0, f"Solid square dock icons should not become text lines: {text_boxes}")
+
+    def test_large_display_headline_detected(self):
+        img = np.full((320, 900, 3), 25, dtype=np.uint8)
+        cv2.putText(img, "HERO", (120, 190), cv2.FONT_HERSHEY_SIMPLEX, 2.4, (240, 240, 240), 5)
+        path = self._save_img("large_headline.png", img)
+
+        res = detect_ui_elements(path)
+        text_boxes = [b for b in res["boxes"] if b.get("type") in ("text", "text_block")]
+        self.assertGreaterEqual(len(text_boxes), 1, "Large display headline up to 96px should be detected")
+
 if __name__ == "__main__":
     unittest.main()

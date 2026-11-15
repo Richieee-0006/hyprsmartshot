@@ -61,6 +61,95 @@
     "wezterm": "terminal",
     "konsole": "terminal",
     "gnome-terminal": "terminal"
+  },
+  "theme": {
+    "mode": "pywal",
+    "pywalPath": "~/.cache/wal/colors.json",
+    "liveWatch": true,
+    "syncSatty": false,
+    "syncPinWindow": true,
+    "dimOpacity": 0.65,
+    "borderRadius": 10,
+    "outlineThickness": 2,
+    "pinBorderWidth": 2,
+    "fontFamily": "JetBrainsMono Nerd Font",
+    "pywalMap": {
+      "accent": "color1",
+      "accentHover": "color9",
+      "selectionBorder": "color2",
+      "snapBorder": "color3",
+      "aiAccent": "color5",
+      "pinBorder": "color4",
+      "danger": "color1",
+      "barBorder": "color8",
+      "textSubtle": "color7"
+    },
+    "overrides": {}
+  },
+  "detection": {
+    "enableText": true,
+    "enablePanels": true,
+    "enableGrids": true,
+    "enableWindowContent": true,
+    "minArea": 64,
+    "maxAreaRatio": 0.98,
+    "tinyContrastMin": 4.5,
+    "adaptiveTextThreshold": true,
+    "filterIconsFromText": true,
+    "multiColumnParagraphs": true,
+    "maxHeaderHeight": 96
+  },
+  "rating": {
+    "enabled": true,
+    "minConfidence": 0.30,
+    "adaptiveLearning": true,
+    "learningRate": 0.08,
+    "profilePath": "",
+    "weights": {
+      "contrast": 0.24,
+      "geometry": 0.18,
+      "edge": 0.22,
+      "interior": 0.14,
+      "semantic": 0.12,
+      "presetFit": 0.10
+    }
+  },
+  "ai": {
+    "enabled": false,
+    "trigger": "manual",
+    "provider": "openai_compatible",
+    "timeoutMs": 15000,
+    "maxImageDim": 1280,
+    "defaultAction": "ocr",
+    "prompt": "Detect interactive UI regions, panels, dialogs, buttons, inputs, and readable text blocks. Return strict JSON array of objects: [{\"label\":\"...\",\"type\":\"panel|button|input|slot|text_block|text|detected\",\"bbox_2d\":[ymin,xmin,ymax,xmax],\"confidence\":0.9}] using normalized coordinates 0..1000.",
+    "providers": {
+      "openai_compatible": {
+        "baseUrl": "http://127.0.0.1:8080/v1",
+        "model": "",
+        "apiKeyEnv": "OPENAI_API_KEY",
+        "apiKey": ""
+      },
+      "gemini": {
+        "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+        "model": "gemini-2.5-flash",
+        "apiKeyEnv": "GEMINI_API_KEY",
+        "apiKey": ""
+      }
+    }
+  },
+  "ui": {
+    "showConfidenceBadge": true,
+    "sortByRating": true,
+    "showMagnifierByDefault": false,
+    "magnifierZoom": 3.0,
+    "magnifierSize": 180,
+    "showHints": true,
+    "animations": true
+  },
+  "capture": {
+    "imageFormat": "png",
+    "pngCompression": 4,
+    "defaultSaveDir": "",
+    "copyAfterSave": true
   }
 }
-

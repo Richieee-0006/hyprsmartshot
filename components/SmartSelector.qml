@@ -8,8 +8,14 @@ Item {
 
     property string mode: "universal" // "universal", "screen"
     property var detectedBoxes: []
+    property var aiBoxes: []
+    property bool aiActive: false
+    property bool aiLoading: false
+    property string aiStatusMessage: ""
     property bool cvCompleted: false
     property var cachedHyprClients: []
+    readonly property string smartshotDir: Quickshell.env("SMARTSHOT_DIR") || ""
+    readonly property var selectedCandidate: (root.currentHierarchyIndex >= 0 && root.currentHierarchyIndex < root.candidateHierarchy.length) ? root.candidateHierarchy[root.currentHierarchyIndex] : null
     readonly property real envMonitorX: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0")
     readonly property real envMonitorY: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0")
     readonly property int envWorkspaceId: parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0")
@@ -25,13 +31,15 @@ Item {
     property bool _updatingCandidates: false
 
     property string activePresetKey: {
+        const envPreset = Quickshell.env("SMARTSHOT_PRESET") || "";
+        if (envPreset) return envPreset;
         const activeClass = Quickshell.env("SMARTSHOT_ACTIVE_CLASS") || "";
         if (activeClass && typeof Config !== "undefined" && Config && Config.resolvePresetForApp) {
             return Config.resolvePresetForApp(activeClass);
         }
         return (typeof Config !== "undefined" && Config && Config.activePreset) ? Config.activePreset : "default";
     }
-    property bool manualPresetSelected: false
+    property bool manualPresetSelected: (Quickshell.env("SMARTSHOT_PRESET") || "").length > 0
 
     onActivePresetKeyChanged: {
         if (!root._updatingCandidates && !root.isConfirmed && !root.isDragging) {
@@ -40,11 +48,16 @@ Item {
     }
 
     function closePopups() {
+        let closed = false;
         if (actionPill.ocrMenuOpen) {
             actionPill.ocrMenuOpen = false;
-            return true;
+            closed = true;
         }
-        return false;
+        if (actionPill.aiMenuOpen) {
+            actionPill.aiMenuOpen = false;
+            closed = true;
+        }
+        return closed;
     }
 
     onModeChanged: {
@@ -96,6 +109,10 @@ Item {
     signal pinAction(real x, real y, real width, real height)
     signal annotateAction(real x, real y, real width, real height)
     signal ocrAction(real x, real y, real width, real height)
+    signal aiOcrAction(real x, real y, real width, real height)
+    signal aiDescribeAction(real x, real y, real width, real height)
+    signal rateFeedbackAction(bool liked, var boxData)
+    signal aiStatusChanged(string message)
     signal cancelRequested()
 
     anchors.fill: parent
@@ -167,6 +184,9 @@ Item {
                     area: (b.w * b.h) / (s * s),
                     type: b.type || "detected",
                     depth: b.depth || 0,
+                    confidence: (typeof b.confidence === "number") ? b.confidence : 0.75,
+                    score: (typeof b.score === "number") ? b.score : 75,
+                    source: b.source || "cv",
                     title: b.title || "",
                     class: b.class || ""
                 }));
@@ -177,6 +197,99 @@ Item {
         } catch (e) {
             console.warn("[HyprSmartShot] Failed to parse boxes JSON:", e);
         }
+    }
+
+    function loadAiBoxes(jsonText) {
+        if (!jsonText || jsonText.trim().length === 0) return;
+        try {
+            const data = JSON.parse(jsonText);
+            root.aiLoading = false;
+            if (data && data.error) {
+                root.aiStatusMessage = String(data.error);
+                root.aiStatusChanged(I18n.t("aiFailTitle") + ": " + root.aiStatusMessage);
+                return;
+            }
+            if (data && Array.isArray(data.boxes)) {
+                const s = root.monitorScale;
+                root.aiBoxes = data.boxes.map(b => ({
+                    x: b.x / s,
+                    y: b.y / s,
+                    w: b.w / s,
+                    h: b.h / s,
+                    area: (b.w * b.h) / (s * s),
+                    type: "ai",
+                    subType: b.type || "ai",
+                    depth: 0,
+                    confidence: (typeof b.confidence === "number") ? b.confidence : 0.90,
+                    score: (typeof b.score === "number") ? b.score : 90,
+                    source: "ai",
+                    label: b.label || "",
+                    title: b.label || "",
+                    class: ""
+                }));
+                if (root.aiBoxes.length > 0) {
+                    root.aiActive = true;
+                }
+                const desc = I18n.t("aiDoneDesc").replace("{count}", String(root.aiBoxes.length));
+                root.aiStatusMessage = desc;
+                root.aiStatusChanged(I18n.t("aiDoneTitle") + " — " + desc);
+                if (!root.isConfirmed && !root.isDragging) {
+                    root.updateHoverCandidates(root.cursorX, root.cursorY);
+                }
+            }
+        } catch (e) {
+            root.aiLoading = false;
+        }
+    }
+
+    function requestAiDetection() {
+        if (root.aiLoading) return;
+        const aiCfg = (typeof Config !== "undefined" && Config && Config.ai) ? Config.ai : {};
+        if (aiCfg.enabled !== true) {
+            root.aiStatusChanged(I18n.t("aiDisabledTitle") + " — " + I18n.t("aiDisabledDesc"));
+            return;
+        }
+        if (root.aiBoxes.length > 0) {
+            root.aiActive = !root.aiActive;
+            if (!root.isConfirmed && !root.isDragging) {
+                root.updateHoverCandidates(root.cursorX, root.cursorY);
+            }
+            return;
+        }
+        const dir = root.smartshotDir || ".";
+        const py = (Quickshell.env("SMARTSHOT_PYTHON") || (dir + "/.venv/bin/python"));
+        const script = dir + "/vision/ai_detector.py";
+        const cfgArg = (Quickshell.env("SMARTSHOT_MERGED_CONFIG") || Quickshell.env("SMARTSHOT_CONFIG") || "");
+        const cmd = cfgArg
+            ? [py, script, "--detect", "/tmp/hyprsmartshot_freeze.png", "--out", "/tmp/hyprsmartshot_ai_boxes.json", "--config", cfgArg]
+            : [py, script, "--detect", "/tmp/hyprsmartshot_freeze.png", "--out", "/tmp/hyprsmartshot_ai_boxes.json"];
+
+        root.aiLoading = true;
+        root.aiActive = true;
+        aiDetectProc.command = cmd;
+        aiDetectProc.running = true;
+    }
+
+    Process {
+        id: aiDetectProc
+        running: false
+        onExited: (exitCode, exitStatus) => {
+            root.aiLoading = false;
+            const p = aiBoxesFile.path;
+            aiBoxesFile.path = "";
+            aiBoxesFile.path = p;
+            if (exitCode !== 0 && root.aiBoxes.length === 0) {
+                root.aiStatusChanged(I18n.t("aiFailTitle") + " — " + I18n.t("aiFailDesc"));
+            }
+        }
+    }
+
+    FileView {
+        id: aiBoxesFile
+        path: Quickshell.env("SMARTSHOT_AI_JSON") || "/tmp/hyprsmartshot_ai_boxes.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: root.loadAiBoxes(text())
     }
 
     // Load CV boxes from JSON file with monitor scale normalization
@@ -248,14 +361,15 @@ Item {
     // Selection border and decorative glow
     Rectangle {
         id: borderBox
+        readonly property bool currentIsAi: !!(root.selectedCandidate && (root.selectedCandidate.source === "ai" || root.selectedCandidate.type === "ai"))
         x: root.selectionX
         y: root.selectionY
         width: root.selectionWidth
         height: root.selectionHeight
         radius: Theme.borderRadius
         color: "transparent"
-        border.color: root.isConfirmed ? Theme.selectionBorder : Theme.snapBorder
-        border.width: root.isConfirmed ? 2.5 : 2.0
+        border.color: currentIsAi ? Theme.aiAccent : (root.isConfirmed ? Theme.selectionBorder : Theme.snapBorder)
+        border.width: root.isConfirmed ? Math.max(2.0, Theme.outlineThickness + 0.5) : Theme.outlineThickness
         visible: width > 0 && height > 0
         z: 10
 
@@ -278,17 +392,23 @@ Item {
                 anchors.centerIn: parent
                 text: {
                     const dim = `${Math.round(root.selectionWidth)} × ${Math.round(root.selectionHeight)}`;
-                    const cur = root.candidateHierarchy[root.currentHierarchyIndex];
+                    const cur = root.selectedCandidate;
                     const prefix = I18n.formatCandidatePrefix(cur);
-                    if (root.candidateHierarchy.length > 1) {
-                        return `${prefix}${dim}  •  ${root.currentHierarchyIndex + 1}/${root.candidateHierarchy.length} ${I18n.t("scrollHint")}`;
+                    const showConf = (typeof Config !== "undefined" && Config && Config.ui && Config.ui.showConfidenceBadge !== false);
+                    let confSuffix = "";
+                    if (showConf && cur && typeof cur.confidence === "number" && (cur.source === "cv" || cur.source === "ai")) {
+                        confSuffix = ` · ${Math.round(cur.confidence * 100)}%`;
                     }
-                    return `${prefix}${dim}`;
+                    const lbl = (cur && cur.label && cur.source === "ai") ? ` (${cur.label})` : "";
+                    if (root.candidateHierarchy.length > 1) {
+                        return `${prefix}${dim}${lbl}${confSuffix}  •  ${root.currentHierarchyIndex + 1}/${root.candidateHierarchy.length} ${I18n.t("scrollHint")}`;
+                    }
+                    return `${prefix}${dim}${lbl}${confSuffix}`;
                 }
                 font.family: Theme.fontFamily
                 font.pixelSize: 11
                 font.weight: Font.DemiBold
-                color: "#ffffff"
+                color: borderBox.currentIsAi ? Theme.aiAccent : Theme.text
             }
         }
 
@@ -353,7 +473,7 @@ Item {
                 width: 10
                 height: 10
                 radius: 5
-                color: handleMouse.containsMouse ? Theme.accent : "#ffffff"
+                color: handleMouse.containsMouse ? Theme.accent : Theme.text
                 border.color: Theme.accent
                 border.width: 1.5
 
@@ -526,11 +646,17 @@ Item {
             }
         }
 
+        hasRatedTarget: !!(root.selectedCandidate && (root.selectedCandidate.source === "cv" || root.selectedCandidate.source === "ai"))
+        aiBusy: root.aiLoading
+
         onCopyRequested: root.copyAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onSaveRequested: root.saveAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onPinRequested: root.pinAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onAnnotateRequested: root.annotateAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
         onOcrRequested: root.ocrAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
+        onAiOcrRequested: root.aiOcrAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
+        onAiDescribeRequested: root.aiDescribeAction(root.selectionX, root.selectionY, root.selectionWidth, root.selectionHeight)
+        onRateFeedbackRequested: (liked) => root.rateFeedbackAction(liked, root.selectedCandidate)
         onCancelRequested: root.clearConfirmation()
     }
 
@@ -620,10 +746,17 @@ Item {
                 }
             }
 
-            // 2. Check CV detected boxes (game UI, slots, inventory grids, menus, dialogue boxes)
+            // 2. Check CV detected boxes + optional AI Vision boxes
             if (root.mode === "universal" || root.mode === "game") {
+                const ratingCfg = (typeof Config !== "undefined" && Config && Config.rating) ? Config.rating : {};
+                const useRatingFilter = (ratingCfg.enabled !== false);
+                const minConf = (useRatingFilter && typeof ratingCfg.minConfidence === "number") ? ratingCfg.minConfidence : 0.0;
+
                 for (let i = 0; i < root.detectedBoxes.length; i++) {
                     const b = root.detectedBoxes[i];
+                    if (useRatingFilter && typeof b.confidence === "number" && b.confidence < minConf) {
+                        continue;
+                    }
                     if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
                         // If cursor is inside a floating window, only accept CV boxes that are inside the floating window
                         if (topFloatingWindow) {
@@ -636,7 +769,42 @@ Item {
                                 continue;
                             }
                         }
-                        candidates.push({ x: b.x, y: b.y, w: b.w, h: b.h, area: b.w * b.h, type: b.type || "cv", title: b.title, class: b.class });
+                        candidates.push({
+                            x: b.x,
+                            y: b.y,
+                            w: b.w,
+                            h: b.h,
+                            area: b.w * b.h,
+                            type: b.type || "cv",
+                            confidence: (typeof b.confidence === "number") ? b.confidence : 0.75,
+                            score: (typeof b.score === "number") ? b.score : 75,
+                            source: b.source || "cv",
+                            title: b.title,
+                            class: b.class
+                        });
+                    }
+                }
+
+                if (root.aiActive && root.aiBoxes.length > 0) {
+                    for (let k = 0; k < root.aiBoxes.length; k++) {
+                        const ab = root.aiBoxes[k];
+                        if (mx >= ab.x && mx <= ab.x + ab.w && my >= ab.y && my <= ab.y + ab.h) {
+                            candidates.push({
+                                x: ab.x,
+                                y: ab.y,
+                                w: ab.w,
+                                h: ab.h,
+                                area: ab.w * ab.h,
+                                type: "ai",
+                                subType: ab.subType || "ai",
+                                confidence: (typeof ab.confidence === "number") ? ab.confidence : 0.90,
+                                score: (typeof ab.score === "number") ? ab.score : 90,
+                                source: "ai",
+                                label: ab.label || "",
+                                title: ab.title || "",
+                                class: ""
+                            });
+                        }
                     }
                 }
             }
@@ -709,14 +877,25 @@ Item {
                 return;
             }
 
-            // Sort candidates by area ascending (smallest first: slot -> grid_row -> grid_container -> panel -> window)
-            processedCandidates.sort((a, b) => a.area - b.area);
+            // Sort candidates by area ascending; prefer higher confidence/AI on near-ties
+            processedCandidates.sort((a, b) => {
+                const areaDiff = a.area - b.area;
+                const minArea = Math.max(1, Math.min(a.area, b.area));
+                if (Math.abs(areaDiff) / minArea < 0.12) {
+                    const ca = (typeof a.confidence === "number") ? a.confidence : 0.5;
+                    const cb = (typeof b.confidence === "number") ? b.confidence : 0.5;
+                    if (a.source === "ai" && b.source !== "ai") return -1;
+                    if (b.source === "ai" && a.source !== "ai") return 1;
+                    if (Math.abs(cb - ca) > 0.05) return cb - ca;
+                }
+                return areaDiff;
+            });
 
-            // Deduplicate similar candidates
+            // Deduplicate similar candidates (prefer higher confidence / AI when nearly identical)
             const unique = [];
             for (let i = 0; i < processedCandidates.length; i++) {
                 const c = processedCandidates[i];
-                let dup = false;
+                let dupIdx = -1;
                 for (let j = 0; j < unique.length; j++) {
                     const u = unique[j];
                     const isSmall = (c.w < 32 || c.h < 32 || u.w < 32 || u.h < 32);
@@ -724,11 +903,15 @@ Item {
                     const sizeTol = isSmall ? 5 : 12;
                     if (Math.abs(c.x - u.x) < posTol && Math.abs(c.y - u.y) < posTol &&
                         Math.abs(c.w - u.w) < sizeTol && Math.abs(c.h - u.h) < sizeTol) {
-                        dup = true;
+                        dupIdx = j;
                         break;
                     }
                 }
-                if (!dup) unique.push(c);
+                if (dupIdx === -1) {
+                    unique.push(c);
+                } else if (c.source === "ai" && unique[dupIdx].source !== "ai") {
+                    unique[dupIdx] = c;
+                }
             }
 
             // Reset hierarchy index if hovering a new leaf element
@@ -900,6 +1083,7 @@ Item {
 
         onPressed: (mouse) => {
             actionPill.ocrMenuOpen = false;
+            actionPill.aiMenuOpen = false;
             if (mouse.button === Qt.RightButton) {
                 if (root.isDragging) {
                     root.isDragging = false;

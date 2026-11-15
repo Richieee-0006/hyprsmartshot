@@ -7,11 +7,16 @@
   "pin": "Pin",
   "annotate": "Annotate",
   "ocr": "OCR",
+  "aiDetect": "AI Box",
+  "aiAction": "AI Vision",
+  "aiOcr": "AI OCR",
+  "aiDescribe": "AI Describe",
+  "settings": "Settings",
   "cancel": "Cancel",
   "close": "Close",
 
-  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Copy  •  󰆓 [Ctrl+S] Save  •  󰐃 [P] Pin  •  󰏫 [A] Annotate  •  󰉐 [O] OCR  •  󰒉 [Arrows] Fine-tune  •  [Alt+Arrows] Resize  •  [Esc] Cancel",
-  "hintUnconfirmed": "󰓥 [Click] Confirm  •  [Drag] Custom region  •  󰒉 [Scroll] Depth / Grid  •  󰍉 [Alt] Magnifier  •  [1-2] Modes  •  [Esc] Close",
+  "hintConfirmed": "󰆏 [Enter/Ctrl+C] Copy  •  󰆓 [Ctrl+S] Save  •  󰐃 [P] Pin  •  󰏫 [A] Annotate  •  󰉐 [O] OCR  •  [+/-] Rate  •  󰒉 [Arrows] Fine-tune  •  [Alt+Arrows] Resize  •  [Esc] Cancel",
+  "hintUnconfirmed": "󰓥 [Click] Confirm  •  [Drag] Custom region  •  󰒉 [Scroll/Tab] Cycle  •  󰚩 [I] AI Detect  •  [S] Settings  •  󰍉 [Alt] Magnifier  •  [Esc] Close",
 
   "tagGrid": "Grid 󰕰 • ",
   "tagRow": "Row 󰒉 • ",
@@ -25,6 +30,7 @@
   "tagText": "Text 󰉿 • ",
   "tagParagraph": "Paragraph 󰉿 • ",
   "tagScreen": "Screen 󰍹 • ",
+  "tagAi": "AI 󰚩 • ",
   "scrollHint": "[Scroll 󰒉]",
 
   "copyTitle": "Screenshot Copied",
@@ -42,5 +48,13 @@
   "ocrNoTextTitle": "OCR Result",
   "ocrNoTextDesc": "No text detected in selection",
   "ocrNotFoundTitle": "OCR Tool Not Found",
-  "ocrNotFoundDesc": "Tesseract not installed. Image copied to clipboard."
+  "ocrNotFoundDesc": "Tesseract not installed. Image copied to clipboard.",
+  "aiDisabledTitle": "AI Vision Disabled",
+  "aiDisabledDesc": "Enable AI provider in Settings to run AI detection or Vision actions.",
+  "aiDoneTitle": "AI Vision Completed",
+  "aiDoneDesc": "AI result copied to clipboard",
+  "aiFailTitle": "AI Vision Error",
+  "aiFailDesc": "Could not reach configured AI provider.",
+  "ratePositive": "Boosted similar boxes",
+  "rateNegative": "Suppressed noisy box"
 }

@@ -11,10 +11,10 @@ Rectangle {
     readonly property real zoomFactor: 4.0
     readonly property real sampleSize: width / zoomFactor
 
-    width: 130
-    height: 130
-    radius: 65
-    color: "#181818"
+    width: Config.ui.magnifierSize || 130
+    height: Config.ui.magnifierSize || 130
+    radius: width * 0.5
+    color: Theme.cardBackground
     border.color: Theme.accent
     border.width: 2.5
     clip: true
@@ -49,8 +49,8 @@ Rectangle {
         source: visible ? "file:///tmp/hyprsmartshot_freeze.png" : ""
         width: (parent && parent.parent) ? parent.parent.width * root.zoomFactor : 1920 * root.zoomFactor
         height: (parent && parent.parent) ? parent.parent.height * root.zoomFactor : 1080 * root.zoomFactor
-        x: 65 - (root.targetX * root.zoomFactor)
-        y: 65 - (root.targetY * root.zoomFactor)
+        x: (root.width * 0.5) - (root.targetX * root.zoomFactor)
+        y: (root.height * 0.5) - (root.targetY * root.zoomFactor)
         smooth: false
         asynchronous: false
     }
@@ -88,8 +88,8 @@ Rectangle {
         width: coordText.implicitWidth + 12
         height: 18
         radius: 9
-        color: Qt.rgba(0, 0, 0, 0.8)
-        border.color: Qt.rgba(1, 1, 1, 0.2)
+        color: Theme.barBackground
+        border.color: Theme.barBorder
         border.width: 1
         z: 11
 
@@ -100,7 +100,7 @@ Rectangle {
             font.family: Theme.fontFamily
             font.pixelSize: 10
             font.bold: true
-            color: "#ffffff"
+            color: Theme.text
         }
     }
 }

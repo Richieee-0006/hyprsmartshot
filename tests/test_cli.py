@@ -163,5 +163,32 @@ class TestCLIArguments(unittest.TestCase):
         self.assertEqual(proc.returncode, 1)
         self.assertIn("Error: Image not found:", proc.stderr)
 
+    def test_doctor_flag_outputs_diagnostics(self):
+        proc = subprocess.run([RUNNER_BIN, "--doctor"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("HyprSmartShot Doctor", proc.stdout)
+        self.assertIn("Theme:", proc.stdout)
+        self.assertIn("Rating:", proc.stdout)
+        self.assertIn("AI:", proc.stdout)
+
+    def test_preset_and_config_missing_value_errors(self):
+        p1 = subprocess.run([RUNNER_BIN, "--preset"], capture_output=True, text=True)
+        self.assertEqual(p1.returncode, 1)
+        self.assertIn("Error: Missing value for --preset", p1.stderr)
+
+        p2 = subprocess.run([RUNNER_BIN, "--config"], capture_output=True, text=True)
+        self.assertEqual(p2.returncode, 1)
+        self.assertIn("Error: Missing value for --config", p2.stderr)
+
+    def test_pin_help_documents_pywal_theme_flags(self):
+        pin_bin = os.path.join(REPO_DIR, "bin", "hyprsmartshot-pin")
+        py = os.path.join(REPO_DIR, ".venv", "bin", "python")
+        if not os.path.isfile(py):
+            py = "python3"
+        proc = subprocess.run([py, pin_bin, "--help"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("--border-color", proc.stdout)
+        self.assertIn("--bg-color", proc.stdout)
+
 if __name__ == "__main__":
     unittest.main()
