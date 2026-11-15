@@ -19,6 +19,7 @@ PanelWindow {
 
     property string freezeImagePath: "/tmp/hyprsmartshot_freeze.png"
     property alias contentItem: root.contentItem
+    readonly property alias backgroundImage: freezeImg
 
     screen: targetScreen
     exclusionMode: ExclusionMode.Ignore

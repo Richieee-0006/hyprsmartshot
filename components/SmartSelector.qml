@@ -8,7 +8,11 @@ Item {
 
     property string mode: "universal" // "universal", "screen"
     property var detectedBoxes: []
+    property bool cvCompleted: false
     property var cachedHyprClients: []
+    readonly property real envMonitorX: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0")
+    readonly property real envMonitorY: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0")
+    readonly property int envWorkspaceId: parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0")
     readonly property real monitorScale: {
         const s = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_SCALE") || "1.0");
         return (s > 0) ? s : 1.0;
@@ -18,6 +22,7 @@ Item {
     property var candidateHierarchy: []
     property real pillSpawnX: 0
     property real pillSpawnY: 0
+    property bool _updatingCandidates: false
 
     property string activePresetKey: {
         const activeClass = Quickshell.env("SMARTSHOT_ACTIVE_CLASS") || "";
@@ -29,9 +34,17 @@ Item {
     property bool manualPresetSelected: false
 
     onActivePresetKeyChanged: {
-        if (!root.isConfirmed && !root.isDragging) {
+        if (!root._updatingCandidates && !root.isConfirmed && !root.isDragging) {
             updateHoverCandidates(cursorX, cursorY);
         }
+    }
+
+    function closePopups() {
+        if (actionPill.ocrMenuOpen) {
+            actionPill.ocrMenuOpen = false;
+            return true;
+        }
+        return false;
     }
 
     onModeChanged: {
@@ -142,6 +155,9 @@ Item {
         try {
             const data = JSON.parse(jsonText);
             if (data && Array.isArray(data.boxes)) {
+                if (data.elapsed_ms !== undefined || data.count !== undefined) {
+                    root.cvCompleted = true;
+                }
                 const s = root.monitorScale;
                 root.detectedBoxes = data.boxes.map(b => ({
                     x: b.x / s,
@@ -176,13 +192,13 @@ Item {
     // re-trigger FileView once CV finishes writing to disk
     Timer {
         id: boxesReloadTimer
-        interval: 50
+        interval: 35
         repeat: true
-        running: root.detectedBoxes.length === 0 && !root.isConfirmed
+        running: !root.cvCompleted && root.detectedBoxes.length === 0 && !root.isConfirmed
         property int attempts: 0
         onTriggered: {
             attempts++;
-            if (attempts > 30 || root.detectedBoxes.length > 0) {
+            if (attempts > 45 || root.cvCompleted || root.detectedBoxes.length > 0) {
                 running = false;
                 return;
             }
@@ -520,208 +536,224 @@ Item {
 
     // Find candidates containing point (x, y)
     function updateHoverCandidates(mx, my) {
-        if (root.isConfirmed || root.isDragging) return;
+        if (root.isConfirmed || root.isDragging || root._updatingCandidates) return;
+        root._updatingCandidates = true;
+        try {
+            if (root.mode === "screen") {
+                root.targetX = 0;
+                root.targetY = 0;
+                root.targetW = root.width;
+                root.targetH = root.height;
+                root.candidateHierarchy = [{ x: 0, y: 0, w: root.width, h: root.height, type: "screen" }];
+                root.currentHierarchyIndex = 0;
+                return;
+            }
 
-        if (root.mode === "screen") {
-            root.targetX = 0;
-            root.targetY = 0;
-            root.targetW = root.width;
-            root.targetH = root.height;
-            root.candidateHierarchy = [{ x: 0, y: 0, w: root.width, h: root.height, type: "screen" }];
-            root.currentHierarchyIndex = 0;
-            return;
-        }
+            const candidates = [];
 
-        const candidates = [];
+            // 1. Gather all Hyprland OS client windows containing (mx, my)
+            let topFloatingWindow = null;
+            const floatingWindows = [];
+            const tiledWindows = [];
 
-        // 1. Gather all Hyprland OS client windows containing (mx, my)
-        let topFloatingWindow = null;
-        const floatingWindows = [];
-        const tiledWindows = [];
+            if (root.mode === "universal" || root.mode === "window") {
+                const mon = Hyprland.focusedMonitor;
+                const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : root.envMonitorX;
+                const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : root.envMonitorY;
+                const envWs = root.envWorkspaceId;
 
-        if (root.mode === "universal" || root.mode === "window") {
-            const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
-            const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
-            const mon = Hyprland.focusedMonitor;
-            const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
-            const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
-            const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
+                const clientList = (root.cachedHyprClients && root.cachedHyprClients.length > 0)
+                    ? root.cachedHyprClients
+                    : ((typeof Hyprland.toplevels.values === 'function')
+                        ? Array.from(Hyprland.toplevels.values())
+                        : (Hyprland.toplevels.values || Hyprland.toplevels));
 
-            const clientList = (root.cachedHyprClients && root.cachedHyprClients.length > 0)
-                ? root.cachedHyprClients
-                : ((typeof Hyprland.toplevels.values === 'function')
-                    ? Array.from(Hyprland.toplevels.values())
-                    : (Hyprland.toplevels.values || Hyprland.toplevels));
-
-            if (clientList && clientList.length) {
-                for (let i = 0; i < clientList.length; i++) {
-                    const raw = clientList[i];
-                    const c = raw.lastIpcObject || raw;
-                    if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
-                    if (c.hidden === true || c.mapped === false) continue;
-                    if (envWs > 0 && !c.pinned && c.workspace && c.workspace.id !== envWs) continue;
-                    const wx = c.at[0] - ox;
-                    const wy = c.at[1] - oy;
-                    const ww = c.size[0];
-                    const wh = c.size[1];
-                    if (mx >= wx && mx <= wx + ww && my >= wy && my <= wy + wh) {
-                        const isFloating = !!c.floating;
-                        const winObj = {
-                            x: wx,
-                            y: wy,
-                            w: ww,
-                            h: wh,
-                            area: ww * wh,
-                            type: isFloating ? "floating_window" : "window",
-                            floating: isFloating,
-                            pinned: !!c.pinned,
-                            focusHistoryID: (typeof c.focusHistoryID === "number") ? c.focusHistoryID : 999,
-                            title: c.title || "",
-                            class: c.class || ""
-                        };
-                        if (isFloating) {
-                            floatingWindows.push(winObj);
-                        } else {
-                            tiledWindows.push(winObj);
+                if (clientList && clientList.length) {
+                    for (let i = 0; i < clientList.length; i++) {
+                        const raw = clientList[i];
+                        const c = raw.lastIpcObject || raw;
+                        if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
+                        if (c.hidden === true || c.mapped === false) continue;
+                        if (envWs > 0 && !c.pinned && c.workspace && c.workspace.id !== envWs) continue;
+                        const wx = c.at[0] - ox;
+                        const wy = c.at[1] - oy;
+                        const ww = c.size[0];
+                        const wh = c.size[1];
+                        if (mx >= wx && mx <= wx + ww && my >= wy && my <= wy + wh) {
+                            const isFloating = !!c.floating;
+                            const isPinned = !!c.pinned;
+                            const clsLow = String(c.class || "").toLowerCase();
+                            // Skip fullscreen transparent overlays (e.g. BongoCat) so windows underneath stay selectable
+                            if (clsLow.indexOf("bongocat") !== -1 ||
+                                (isFloating && isPinned && ww >= root.width * 0.92 && wh >= root.height * 0.92)) {
+                                continue;
+                            }
+                            const winObj = {
+                                x: wx,
+                                y: wy,
+                                w: ww,
+                                h: wh,
+                                area: ww * wh,
+                                type: isFloating ? "floating_window" : "window",
+                                floating: isFloating,
+                                pinned: isPinned,
+                                focusHistoryID: (typeof c.focusHistoryID === "number") ? c.focusHistoryID : 999,
+                                title: c.title || "",
+                                class: c.class || ""
+                            };
+                            if (isFloating) {
+                                floatingWindows.push(winObj);
+                            } else {
+                                tiledWindows.push(winObj);
+                            }
                         }
+                    }
+                }
+
+                // Determine top-most floating overlay if any (pinned first, then lowest focusHistoryID)
+                if (floatingWindows.length > 0) {
+                    floatingWindows.sort((a, b) => {
+                        if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+                        return a.focusHistoryID - b.focusHistoryID;
+                    });
+                    topFloatingWindow = floatingWindows[0];
+                }
+            }
+
+            // 2. Check CV detected boxes (game UI, slots, inventory grids, menus, dialogue boxes)
+            if (root.mode === "universal" || root.mode === "game") {
+                for (let i = 0; i < root.detectedBoxes.length; i++) {
+                    const b = root.detectedBoxes[i];
+                    if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+                        // If cursor is inside a floating window, only accept CV boxes that are inside the floating window
+                        if (topFloatingWindow) {
+                            const insideFloating = (b.x >= topFloatingWindow.x - 4 &&
+                                                    b.y >= topFloatingWindow.y - 4 &&
+                                                    b.x + b.w <= topFloatingWindow.x + topFloatingWindow.w + 4 &&
+                                                    b.y + b.h <= topFloatingWindow.y + topFloatingWindow.h + 4);
+                            if (!insideFloating && (b.w > topFloatingWindow.w || b.h > topFloatingWindow.h)) {
+                                // Skip background window boxes that bleed through under the floating overlay
+                                continue;
+                            }
+                        }
+                        candidates.push({ x: b.x, y: b.y, w: b.w, h: b.h, area: b.w * b.h, type: b.type || "cv", title: b.title, class: b.class });
                     }
                 }
             }
 
-            // Determine top-most floating overlay if any (pinned first, then lowest focusHistoryID)
-            if (floatingWindows.length > 0) {
-                floatingWindows.sort((a, b) => {
-                    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
-                    return a.focusHistoryID - b.focusHistoryID;
-                });
-                topFloatingWindow = floatingWindows[0];
-            }
-        }
-
-        // 2. Check CV detected boxes (game UI, slots, inventory grids, menus, dialogue boxes)
-        if (root.mode === "universal" || root.mode === "game") {
-            for (let i = 0; i < root.detectedBoxes.length; i++) {
-                const b = root.detectedBoxes[i];
-                if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
-                    // If cursor is inside a floating window, only accept CV boxes that are inside the floating window
-                    if (topFloatingWindow) {
-                        const insideFloating = (b.x >= topFloatingWindow.x - 4 &&
-                                                b.y >= topFloatingWindow.y - 4 &&
-                                                b.x + b.w <= topFloatingWindow.x + topFloatingWindow.w + 4 &&
-                                                b.y + b.h <= topFloatingWindow.y + topFloatingWindow.h + 4);
-                        if (!insideFloating && (b.w > topFloatingWindow.w || b.h > topFloatingWindow.h)) {
-                            // Skip background window boxes that bleed through under the floating overlay
-                            continue;
-                        }
+            // 3. Add window candidates according to z-order stacking
+            if (root.mode === "universal" || root.mode === "window") {
+                if (topFloatingWindow) {
+                    // Floating window is on top; add floating windows (occluded tiled windows underneath are excluded)
+                    for (let f = 0; f < floatingWindows.length; f++) {
+                        candidates.push(floatingWindows[f]);
                     }
-                    candidates.push({ x: b.x, y: b.y, w: b.w, h: b.h, area: b.w * b.h, type: b.type || "cv", title: b.title, class: b.class });
+                } else {
+                    // No floating window at (mx, my); use tiled windows
+                    for (let t = 0; t < tiledWindows.length; t++) {
+                        candidates.push(tiledWindows[t]);
+                    }
                 }
             }
-        }
 
-        // 3. Add window candidates according to z-order stacking
-        if (root.mode === "universal" || root.mode === "window") {
-            if (topFloatingWindow) {
-                // Floating window is on top; add floating windows (occluded tiled windows underneath are excluded)
-                for (let f = 0; f < floatingWindows.length; f++) {
-                    candidates.push(floatingWindows[f]);
-                }
-            } else {
-                // No floating window at (mx, my); use tiled windows
-                for (let t = 0; t < tiledWindows.length; t++) {
-                    candidates.push(tiledWindows[t]);
-                }
-            }
-        }
-
-        // Auto-detect app preset from hovered window unless user manually chose a preset
-        if (!root.manualPresetSelected && typeof Config !== "undefined" && Config && Config.resolvePresetForApp) {
-            const activeWin = topFloatingWindow || (tiledWindows.length > 0 ? tiledWindows[0] : null);
-            if (activeWin && activeWin.class) {
-                const detectedPreset = Config.resolvePresetForApp(activeWin.class);
+            // Auto-detect app preset from hovered window unless user manually chose a preset
+            if (!root.manualPresetSelected && typeof Config !== "undefined" && Config && Config.resolvePresetForApp) {
+                const activeWin = topFloatingWindow || (tiledWindows.length > 0 ? tiledWindows[0] : null);
+                const detectedPreset = (activeWin && activeWin.class)
+                    ? Config.resolvePresetForApp(activeWin.class)
+                    : (Config.activePreset || "default");
                 if (detectedPreset && detectedPreset !== root.activePresetKey) {
                     root.activePresetKey = detectedPreset;
                 }
             }
-        }
 
-        const preset = (typeof Config !== "undefined" && Config && Config.getPreset)
-            ? Config.getPreset(root.activePresetKey)
-            : { offsetX: 0, offsetY: 0, inset: 0, filter: "all" };
+            const preset = (typeof Config !== "undefined" && Config && Config.getPreset)
+                ? Config.getPreset(root.activePresetKey)
+                : { offsetX: 0, offsetY: 0, inset: 0, filter: "all" };
 
-        let processedCandidates = candidates;
-        if (preset.filter === "window") {
-            const winOnly = candidates.filter(c => c.type === "window" || c.type === "floating_window");
-            if (winOnly.length > 0) processedCandidates = winOnly;
-        } else if (preset.filter === "content") {
-            const contentOnly = candidates.filter(c => c.type === "panel" || c.type === "content" || c.type === "detected");
-            if (contentOnly.length > 0) processedCandidates = contentOnly;
-        }
-
-        const offX = preset.offsetX || 0;
-        const offY = preset.offsetY || 0;
-        const inset = preset.inset || 0;
-
-        if (offX !== 0 || offY !== 0 || inset !== 0) {
-            for (let i = 0; i < processedCandidates.length; i++) {
-                const c = processedCandidates[i];
-                c.x = Math.max(0, c.x + offX + inset);
-                c.y = Math.max(0, c.y + offY + inset);
-                c.w = Math.max(1, c.w - (2 * inset));
-                c.h = Math.max(1, c.h - (2 * inset));
-                c.area = c.w * c.h;
+            let processedCandidates = candidates;
+            if (preset.filter === "window") {
+                const termAllowed = { window: true, floating_window: true, panel: true, content: true, text_block: true, text: true, input: true };
+                const termFiltered = candidates.filter(c => !!termAllowed[c.type]);
+                if (termFiltered.length > 0) processedCandidates = termFiltered;
+            } else if (preset.filter === "content") {
+                const browserAllowed = { panel: true, content: true, detected: true, button: true, input: true, text_block: true, text: true, window: true, floating_window: true };
+                const contentOnly = candidates.filter(c => !!browserAllowed[c.type]);
+                if (contentOnly.length > 0) processedCandidates = contentOnly;
+            } else if (preset.filter === "dense") {
+                const gameAllowed = { slot: true, item: true, grid_row: true, grid_container: true, panel: true, button: true, input: true, detected: true, content: true, floating_window: true, window: true };
+                const denseOnly = candidates.filter(c => !!gameAllowed[c.type]);
+                if (denseOnly.length > 0) processedCandidates = denseOnly;
             }
-        }
 
-        if (processedCandidates.length === 0) {
-            root.candidateHierarchy = [];
-            root.targetW = 0;
-            root.targetH = 0;
-            return;
-        }
+            const offX = preset.offsetX || 0;
+            const offY = preset.offsetY || 0;
+            const inset = preset.inset || 0;
 
-        // Sort candidates by area ascending (smallest first: slot -> grid_row -> grid_container -> panel -> window)
-        processedCandidates.sort((a, b) => a.area - b.area);
-
-        // Deduplicate similar candidates
-        const unique = [];
-        for (let i = 0; i < processedCandidates.length; i++) {
-            const c = processedCandidates[i];
-            let dup = false;
-            for (let j = 0; j < unique.length; j++) {
-                const u = unique[j];
-                const isSmall = (c.w < 32 || c.h < 32 || u.w < 32 || u.h < 32);
-                const posTol = isSmall ? 4 : 8;
-                const sizeTol = isSmall ? 5 : 12;
-                if (Math.abs(c.x - u.x) < posTol && Math.abs(c.y - u.y) < posTol &&
-                    Math.abs(c.w - u.w) < sizeTol && Math.abs(c.h - u.h) < sizeTol) {
-                    dup = true;
-                    break;
+            if (offX !== 0 || offY !== 0 || inset !== 0) {
+                for (let i = 0; i < processedCandidates.length; i++) {
+                    const c = processedCandidates[i];
+                    const applyInset = (preset.filter !== "window" || c.type === "window" || c.type === "floating_window") ? inset : 0;
+                    c.x = Math.max(0, c.x + offX + applyInset);
+                    c.y = Math.max(0, c.y + offY + applyInset);
+                    c.w = Math.max(1, c.w - (2 * applyInset));
+                    c.h = Math.max(1, c.h - (2 * applyInset));
+                    c.area = c.w * c.h;
                 }
             }
-            if (!dup) unique.push(c);
-        }
 
-        // Reset hierarchy index if hovering a new leaf element
-        const smallestChanged = (root.candidateHierarchy.length === 0 ||
-                                 unique[0].x !== root.candidateHierarchy[0].x ||
-                                 unique[0].y !== root.candidateHierarchy[0].y ||
-                                 unique[0].w !== root.candidateHierarchy[0].w ||
-                                 unique[0].h !== root.candidateHierarchy[0].h);
-        if (smallestChanged) {
-            root.currentHierarchyIndex = 0;
-        } else if (root.currentHierarchyIndex >= unique.length) {
-            root.currentHierarchyIndex = 0;
-        }
+            if (processedCandidates.length === 0) {
+                root.candidateHierarchy = [];
+                root.targetW = 0;
+                root.targetH = 0;
+                return;
+            }
 
-        root.candidateHierarchy = unique;
+            // Sort candidates by area ascending (smallest first: slot -> grid_row -> grid_container -> panel -> window)
+            processedCandidates.sort((a, b) => a.area - b.area);
 
-        const selected = unique[root.currentHierarchyIndex];
-        if (selected) {
-            root.targetX = selected.x;
-            root.targetY = selected.y;
-            root.targetW = selected.w;
-            root.targetH = selected.h;
+            // Deduplicate similar candidates
+            const unique = [];
+            for (let i = 0; i < processedCandidates.length; i++) {
+                const c = processedCandidates[i];
+                let dup = false;
+                for (let j = 0; j < unique.length; j++) {
+                    const u = unique[j];
+                    const isSmall = (c.w < 32 || c.h < 32 || u.w < 32 || u.h < 32);
+                    const posTol = isSmall ? 4 : 8;
+                    const sizeTol = isSmall ? 5 : 12;
+                    if (Math.abs(c.x - u.x) < posTol && Math.abs(c.y - u.y) < posTol &&
+                        Math.abs(c.w - u.w) < sizeTol && Math.abs(c.h - u.h) < sizeTol) {
+                        dup = true;
+                        break;
+                    }
+                }
+                if (!dup) unique.push(c);
+            }
+
+            // Reset hierarchy index if hovering a new leaf element
+            const smallestChanged = (root.candidateHierarchy.length === 0 ||
+                                     unique[0].x !== root.candidateHierarchy[0].x ||
+                                     unique[0].y !== root.candidateHierarchy[0].y ||
+                                     unique[0].w !== root.candidateHierarchy[0].w ||
+                                     unique[0].h !== root.candidateHierarchy[0].h);
+            if (smallestChanged) {
+                root.currentHierarchyIndex = 0;
+            } else if (root.currentHierarchyIndex >= unique.length) {
+                root.currentHierarchyIndex = 0;
+            }
+
+            root.candidateHierarchy = unique;
+
+            const selected = unique[root.currentHierarchyIndex];
+            if (selected) {
+                root.targetX = selected.x;
+                root.targetY = selected.y;
+                root.targetW = selected.w;
+                root.targetH = selected.h;
+            }
+        } finally {
+            root._updatingCandidates = false;
         }
     }
 
@@ -788,10 +820,10 @@ Item {
         }
 
         // Snap to Hyprland client windows (cached snapshot or live IPC)
+        const envOx = root.envMonitorX;
+        const envOy = root.envMonitorY;
+        const envWs = root.envWorkspaceId;
         if (root.cachedHyprClients && root.cachedHyprClients.length > 0) {
-            const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
-            const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
-            const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
             for (let i = 0; i < root.cachedHyprClients.length; i++) {
                 const c = root.cachedHyprClients[i];
                 if (!c || !Array.isArray(c.at) || !Array.isArray(c.size)) continue;
@@ -808,9 +840,6 @@ Item {
             const toplevels = Hyprland.toplevels;
             const all = (typeof toplevels.values === 'function') ? Array.from(toplevels.values()) : (toplevels.values || toplevels);
             if (all && all.length) {
-                const envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
-                const envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
-                const envWs = parseInt(Quickshell.env("SMARTSHOT_WORKSPACE_ID") || "0");
                 const mon = Hyprland.focusedMonitor;
                 const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
                 const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;

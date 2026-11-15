@@ -253,7 +253,7 @@ Rectangle {
         z: 100
         anchors.top: parent.bottom
         anchors.topMargin: 8
-        anchors.horizontalCenter: presetToggleItem.horizontalCenter
+        x: 4 + presetToggleItem.x + (presetToggleItem.width - width) * 0.5
 
         Column {
             id: presetCol

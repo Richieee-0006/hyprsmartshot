@@ -36,19 +36,31 @@
   },
   "appRules": {
     "firefox": "browser",
+    "librewolf": "browser",
     "google-chrome": "browser",
     "chromium": "browser",
     "brave-browser": "browser",
+    "vivaldi": "browser",
+    "floorp": "browser",
     "zen-browser": "browser",
     "discord": "browser",
     "vesktop": "browser",
     "webcord": "browser",
     "equibop": "browser",
+    "obsidian": "browser",
     "com.mojang.minecraft": "game",
     "minecraft": "game",
+    "steam_app": "game",
+    "gamescope": "game",
+    "lutris": "game",
+    "prismlauncher": "game",
     "kitty": "terminal",
     "alacritty": "terminal",
-    "foot": "terminal"
+    "foot": "terminal",
+    "ghostty": "terminal",
+    "wezterm": "terminal",
+    "konsole": "terminal",
+    "gnome-terminal": "terminal"
   }
 }
 

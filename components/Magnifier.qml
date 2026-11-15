@@ -7,7 +7,9 @@ Rectangle {
     property real targetX: 0
     property real targetY: 0
     property bool active: false
+    property var sourceImage: null
     readonly property real zoomFactor: 4.0
+    readonly property real sampleSize: width / zoomFactor
 
     width: 130
     height: 130
@@ -23,15 +25,33 @@ Rectangle {
     x: Math.min(Math.max(targetX + 25, 10), parent ? parent.width - width - 10 : 0)
     y: Math.min(Math.max(targetY + 25, 10), parent ? parent.height - height - 10 : 0)
 
-    // Zoomed snapshot of the frozen screen
+    // Reuse FreezeScreen's GPU texture directly via ShaderEffectSource (zero disk decode / huge texture)
+    ShaderEffectSource {
+        id: zoomedSource
+        anchors.fill: parent
+        visible: root.active && root.sourceImage !== null
+        sourceItem: root.active ? root.sourceImage : null
+        sourceRect: Qt.rect(
+            root.targetX - (root.sampleSize * 0.5),
+            root.targetY - (root.sampleSize * 0.5),
+            root.sampleSize,
+            root.sampleSize
+        )
+        smooth: false
+        live: true
+        hideSource: false
+    }
+
+    // Fallback if sourceImage is not provided
     Image {
         id: zoomedImage
-        source: root.active ? "file:///tmp/hyprsmartshot_freeze.png" : ""
+        visible: root.active && root.sourceImage === null
+        source: visible ? "file:///tmp/hyprsmartshot_freeze.png" : ""
         width: (parent && parent.parent) ? parent.parent.width * root.zoomFactor : 1920 * root.zoomFactor
         height: (parent && parent.parent) ? parent.parent.height * root.zoomFactor : 1080 * root.zoomFactor
         x: 65 - (root.targetX * root.zoomFactor)
         y: 65 - (root.targetY * root.zoomFactor)
-        smooth: false // Crisp pixelated zoom
+        smooth: false
         asynchronous: false
     }
 

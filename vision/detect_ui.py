@@ -46,78 +46,143 @@ def compute_containment(b1, b2):
     min_area = min(b1['w'] * b1['h'], b2['w'] * b2['h'])
     return float(inter_area) / min_area if min_area > 0 else 0.0
 
+def _sat_mean(sat, x1, y1, x2, y2):
+    """Computes exact rectangle mean in O(1) from an OpenCV integral image."""
+    if x2 <= x1 or y2 <= y1:
+        return 0.0
+    total = float(sat[y2, x2] - sat[y1, x2] - sat[y2, x1] + sat[y1, x1])
+    return total / ((x2 - x1) * (y2 - y1))
+
+
 def deduplicate_boxes(boxes, iou_thresh=0.72, contain_thresh=0.88):
     """
     Eliminates concentric inner/outer border artifacts created by multi-pixel frames,
     merging them into the unified outer bounding box and preserving specific types.
-    Adapts size tolerance dynamically to ensure small elements are not falsely merged.
+    Uses spatial grid bucketing to preserve exact insertion-order semantics in near-linear time.
     """
     sorted_boxes = sorted(boxes, key=lambda b: b['area'], reverse=True)
     deduped = []
+    # Track [x, y, x2, y2, w, h, area, is_client, cell_x, cell_y] per deduped entry
+    meta = []
+    grid = {}
+    cell_size = 32
+    type_priority = {
+        "grid_container": 7,
+        "grid_row": 6,
+        "slot": 5,
+        "item": 4,
+        "button": 4,
+        "input": 4,
+        "text_block": 3,
+        "text": 3,
+        "panel": 2,
+        "detected": 1
+    }
 
     for b in sorted_boxes:
+        bx = b['x']
+        by = b['y']
+        bw = b['w']
+        bh = b['h']
+        bx2 = bx + bw
+        by2 = by + bh
+        b_area = bw * bh
+        b_client = bool(b.get("is_client"))
+
+        gx = bx // cell_size
+        gy = by // cell_size
+        cand_indices = []
+        for dx in (-1, 0, 1):
+            cx = gx + dx
+            for dy in (-1, 0, 1):
+                bucket = grid.get((cx, gy + dy))
+                if bucket:
+                    cand_indices.extend(bucket)
+
+        if len(cand_indices) > 1:
+            cand_indices.sort()
+
         merged = False
-        for existing in deduped:
-            # Prevent client window from swallowing internal content viewport/panels
-            if bool(existing.get("is_client")) != bool(b.get("is_client")):
+        for idx in cand_indices:
+            m = meta[idx]
+            if m[7] != b_client:
                 continue
 
-            iou = compute_iou(b, existing)
-            contain = compute_containment(b, existing)
-            size_diff = abs(b['w'] - existing['w']) + abs(b['h'] - existing['h'])
-            min_dim = min(b['w'], b['h'], existing['w'], existing['h'])
+            ex, ey, ex2, ey2, ew, eh, e_area = m[0], m[1], m[2], m[3], m[4], m[5], m[6]
+
+            # Never merge distinct structural regions (max edge diff > 25px)
+            if (abs(bx - ex) > 25 or abs(by - ey) > 25 or
+                    abs(bx2 - ex2) > 25 or abs(by2 - ey2) > 25):
+                continue
+
+            ix1 = bx if bx > ex else ex
+            iy1 = by if by > ey else ey
+            ix2 = bx2 if bx2 < ex2 else ex2
+            iy2 = by2 if by2 < ey2 else ey2
+            iw = ix2 - ix1
+            ih = iy2 - iy1
+            if iw <= 0 or ih <= 0:
+                continue
+
+            inter_area = iw * ih
+            union_area = b_area + e_area - inter_area
+            iou = float(inter_area) / union_area if union_area > 0 else 0.0
+            min_area = b_area if b_area < e_area else e_area
+            contain = float(inter_area) / min_area if min_area > 0 else 0.0
+
+            size_diff = abs(bw - ew) + abs(bh - eh)
+            min_dim = min(bw, bh, ew, eh)
             max_size_diff = min(28, max(5, int(min_dim * 0.42)))
 
-            # Measure edge distance between candidate and existing box
-            edge_x1 = abs(b['x'] - existing['x'])
-            edge_y1 = abs(b['y'] - existing['y'])
-            edge_x2 = abs((b['x'] + b['w']) - (existing['x'] + existing['w']))
-            edge_y2 = abs((b['y'] + b['h']) - (existing['y'] + existing['h']))
-            max_edge_diff = max(edge_x1, edge_y1, edge_x2, edge_y2)
-
-            # Never merge distinct structural regions (such as full window vs browser body below toolbar).
-            # A genuine multi-pixel border artifact has edge differences <= 25px.
-            if max_edge_diff > 25:
+            # Keep distinct parent panel vs synthesized grid/row containers when padding separates them
+            b_type = b.get("type")
+            e_type = deduped[idx].get("type")
+            if (({b_type, e_type} & {"grid_container", "grid_row"}) and
+                    ({b_type, e_type} & {"panel", "detected"}) and
+                    (abs(bw - ew) + abs(bh - eh)) > 10):
                 continue
 
-            # If two boxes have high IoU or one almost entirely contains the other with minor size difference
             if iou >= iou_thresh or (contain >= contain_thresh and size_diff <= max_size_diff):
                 merged = True
-                # Merge coordinates to outer extent
-                nx = min(existing['x'], b['x'])
-                ny = min(existing['y'], b['y'])
-                nw = max(existing['x'] + existing['w'], b['x'] + b['w']) - nx
-                nh = max(existing['y'] + existing['h'], b['y'] + b['h']) - ny
+                existing = deduped[idx]
+                nx = ex if ex < bx else bx
+                ny = ey if ey < by else by
+                nx2 = ex2 if ex2 > bx2 else bx2
+                ny2 = ey2 if ey2 > by2 else by2
+                nw = nx2 - nx
+                nh = ny2 - ny
+                n_area = nw * nh
+
                 existing['x'] = int(nx)
                 existing['y'] = int(ny)
                 existing['w'] = int(nw)
                 existing['h'] = int(nh)
-                existing['area'] = int(nw * nh)
+                existing['area'] = int(n_area)
 
-                # Upgrade semantic type if new box is more specific
-                type_priority = {
-                    "grid_container": 7,
-                    "grid_row": 6,
-                    "slot": 5,
-                    "item": 4,
-                    "button": 4,
-                    "input": 4,
-                    "text_block": 3,
-                    "text": 3,
-                    "panel": 2,
-                    "detected": 1
-                }
                 p_new = type_priority.get(b.get("type"), 1)
                 p_old = type_priority.get(existing.get("type"), 1)
                 if p_new > p_old:
                     existing['type'] = b['type']
+
+                old_gx, old_gy = m[8], m[9]
+                new_gx, new_gy = nx // cell_size, ny // cell_size
+                if new_gx != old_gx or new_gy != old_gy:
+                    grid[(old_gx, old_gy)].remove(idx)
+                    grid.setdefault((new_gx, new_gy), []).append(idx)
+                    m[8], m[9] = new_gx, new_gy
+                m[0], m[1], m[2], m[3], m[4], m[5], m[6] = nx, ny, nx2, ny2, nw, nh, n_area
                 break
+
         if not merged:
+            idx = len(deduped)
             deduped.append(dict(b))
+            meta.append([bx, by, bx2, by2, bw, bh, b_area, b_client, gx, gy])
+            grid.setdefault((gx, gy), []).append(idx)
 
     return deduped
 
-def compute_border_contrast(gray, x, y, w, h):
+
+def compute_border_contrast(gray, x, y, w, h, sat=None):
     """
     Measures edge contrast across the outer perimeter of a candidate bounding box.
     Uses adaptive probe depth (1px for small shapes <24px, 2px for <44px, 3px for large)
@@ -129,21 +194,36 @@ def compute_border_contrast(gray, x, y, w, h):
 
     d = 1 if (w < 24 or h < 24) else (2 if (w < 44 or h < 44) else 3)
 
-    top_out = gray[max(0, y-d):y, x:x+w]
-    top_in = gray[y:min(h_img, y+d), x:x+w]
-    diff_t = abs(float(top_out.mean()) - float(top_in.mean())) if top_out.size and top_in.size else 0.0
+    if sat is not None:
+        ty_out = max(0, y - d)
+        ty_in = min(h_img, y + d)
+        by_in = max(0, y + h - d)
+        by_out = min(h_img, y + h + d)
+        lx_out = max(0, x - d)
+        lx_in = min(w_img, x + d)
+        rx_in = max(0, x + w - d)
+        rx_out = min(w_img, x + w + d)
 
-    bot_in = gray[max(0, y+h-d):y+h, x:x+w]
-    bot_out = gray[y+h:min(h_img, y+h+d), x:x+w]
-    diff_b = abs(float(bot_in.mean()) - float(bot_out.mean())) if bot_in.size and bot_out.size else 0.0
+        diff_t = abs(_sat_mean(sat, x, ty_out, x + w, y) - _sat_mean(sat, x, y, x + w, ty_in)) if y > ty_out and ty_in > y else 0.0
+        diff_b = abs(_sat_mean(sat, x, by_in, x + w, y + h) - _sat_mean(sat, x, y + h, x + w, by_out)) if y + h > by_in and by_out > y + h else 0.0
+        diff_l = abs(_sat_mean(sat, lx_out, y, x, y + h) - _sat_mean(sat, x, y, lx_in, y + h)) if x > lx_out and lx_in > x else 0.0
+        diff_r = abs(_sat_mean(sat, rx_in, y, x + w, y + h) - _sat_mean(sat, x + w, y, rx_out, y + h)) if x + w > rx_in and rx_out > x + w else 0.0
+    else:
+        top_out = gray[max(0, y-d):y, x:x+w]
+        top_in = gray[y:min(h_img, y+d), x:x+w]
+        diff_t = abs(float(top_out.mean()) - float(top_in.mean())) if top_out.size and top_in.size else 0.0
 
-    left_out = gray[y:y+h, max(0, x-d):x]
-    left_in = gray[y:y+h, x:min(w_img, x+d)]
-    diff_l = abs(float(left_out.mean()) - float(left_in.mean())) if left_out.size and left_in.size else 0.0
+        bot_in = gray[max(0, y+h-d):y+h, x:x+w]
+        bot_out = gray[y+h:min(h_img, y+h+d), x:x+w]
+        diff_b = abs(float(bot_in.mean()) - float(bot_out.mean())) if bot_in.size and bot_out.size else 0.0
 
-    right_in = gray[y:y+h, max(0, x+w-d):x+w]
-    right_out = gray[y:y+h, x+w:min(w_img, x+w+d)]
-    diff_r = abs(float(right_in.mean()) - float(right_out.mean())) if right_in.size and right_out.size else 0.0
+        left_out = gray[y:y+h, max(0, x-d):x]
+        left_in = gray[y:y+h, x:min(w_img, x+d)]
+        diff_l = abs(float(left_out.mean()) - float(left_in.mean())) if left_out.size and left_in.size else 0.0
+
+        right_in = gray[y:y+h, max(0, x+w-d):x+w]
+        right_out = gray[y:y+h, x+w:min(w_img, x+w+d)]
+        diff_r = abs(float(right_in.mean()) - float(right_out.mean())) if right_in.size and right_out.size else 0.0
 
     # Best 3 edges (handles HUD/game panels with an open/gradient edge against 3D game scenes)
     diffs = sorted([diff_t, diff_b, diff_l, diff_r], reverse=True)
@@ -151,7 +231,8 @@ def compute_border_contrast(gray, x, y, w, h):
     avg4 = float(sum(diffs) / 4.0)
     return max(avg4, best3 * 0.92)
 
-def is_valid_border(gray, x, y, w, h):
+
+def is_valid_border(gray, x, y, w, h, sat=None):
     """
     Checks if a candidate bounding box has a genuine UI border.
     In dark scenes (mean < 55, typical dark fantasy UI / RPG frames),
@@ -162,11 +243,13 @@ def is_valid_border(gray, x, y, w, h):
     if x <= 1 or y <= 1 or x + w >= w_img - 2 or y + h >= h_img - 2:
         return True, 30.0
 
-    # Sample local element brightness
-    roi = gray[max(0, y):min(h_img, y+h), max(0, x):min(w_img, x+w)]
-    local_mean = float(roi.mean()) if roi.size else 128.0
+    if sat is not None:
+        local_mean = _sat_mean(sat, max(0, x), max(0, y), min(w_img, x + w), min(h_img, y + h))
+    else:
+        roi = gray[max(0, y):min(h_img, y+h), max(0, x):min(w_img, x+w)]
+        local_mean = float(roi.mean()) if roi.size else 128.0
 
-    contrast = compute_border_contrast(gray, x, y, w, h)
+    contrast = compute_border_contrast(gray, x, y, w, h, sat=sat)
 
     # Adaptive contrast threshold based on human contrast sensitivity (Weber-Fechner law)
     if local_mean < 45.0:
@@ -208,10 +291,13 @@ def cluster_slots_and_grids(boxes):
             continue
         band = [s1]
         band_indices = [i]
+        tol_y = max(4, s1['h'] * 0.25)
         for j, s2 in enumerate(slots_sorted):
+            if s2['y'] - s1['y'] > tol_y:
+                break
             if j == i or j in used_slot_indices:
                 continue
-            if abs(s1['y'] - s2['y']) <= max(4, s1['h'] * 0.25) and abs(s1['h'] - s2['h']) <= max(4, s1['h'] * 0.25):
+            if abs(s1['y'] - s2['y']) <= tol_y and abs(s1['h'] - s2['h']) <= tol_y:
                 band.append(s2)
                 band_indices.append(j)
 
@@ -312,9 +398,12 @@ def cluster_adjacent_columns(boxes):
     unions = []
 
     for i, p1 in enumerate(panels_sorted):
+        max_y_tol = max(12, int(p1['h'] * 0.10))
         for j in range(i + 1, len(panels_sorted)):
             p2 = panels_sorted[j]
-            y_diff = abs(p1['y'] - p2['y'])
+            y_diff = p2['y'] - p1['y']
+            if y_diff > max_y_tol:
+                break
             h_diff = abs(p1['h'] - p2['h'])
             min_h = min(p1['h'], p2['h'])
 
@@ -375,7 +464,7 @@ def detect_window_content_areas(gray, client_boxes):
             if header_max_y > header_min_y and header_max_y < h_img:
                 sub_gray = gray[header_min_y:header_max_y, wx:wx + ww]
                 if sub_gray.shape[0] >= 5 and sub_gray.shape[1] >= 100:
-                    row_diffs = np.mean(np.abs(np.diff(sub_gray.astype(np.float32), axis=0)), axis=1)
+                    row_diffs = np.mean(cv2.absdiff(sub_gray[1:, :], sub_gray[:-1, :]), axis=1)
                     if len(row_diffs) > 0:
                         best_row_idx = int(np.argmax(row_diffs))
                         max_diff = float(row_diffs[best_row_idx])
@@ -404,8 +493,8 @@ def detect_window_content_areas(gray, client_boxes):
         if is_game:
             continue
 
-        diffs_col = np.abs(np.diff(win_sub.astype(np.float32), axis=1))
-        col_frac = np.mean(diffs_col >= 3.0, axis=0)
+        diffs_col = cv2.absdiff(win_sub[:, 1:], win_sub[:, :-1])
+        col_frac = np.mean(diffs_col >= 3, axis=0)
         splits = [idx + 1 for idx, frac in enumerate(col_frac) if frac >= 0.40]
 
         merged_splits = []
@@ -432,8 +521,8 @@ def detect_window_content_areas(gray, client_boxes):
                 cw = cx2 - cx1
                 if cw >= 40:
                     sub_col = win_sub[:, cx1:cx2]
-                    diffs_row = np.abs(np.diff(sub_col.astype(np.float32), axis=0))
-                    row_frac = np.mean(diffs_row >= 3.0, axis=1)
+                    diffs_row = cv2.absdiff(sub_col[1:, :], sub_col[:-1, :])
+                    row_frac = np.mean(diffs_row >= 3, axis=1)
                     row_splits = [idx + 1 for idx, frac in enumerate(row_frac) if frac >= 0.40]
 
                     merged_row_splits = []
@@ -546,7 +635,22 @@ def cluster_text_paragraphs(text_lines, min_lines=2):
 
     return paragraphs
 
-def detect_text_regions(gray, orig_w, orig_h):
+def _sat_has_std(gray, sat, sqsat, x, y, w, h, min_std=6.0):
+    """Checks std(gray[y:y+h, x:x+w]) >= min_std using integral images when available."""
+    if sat is not None and sqsat is not None:
+        area = w * h
+        if area <= 0:
+            return False
+        s1 = float(sat[y + h, x + w] - sat[y, x + w] - sat[y + h, x] + sat[y, x])
+        s2 = float(sqsat[y + h, x + w] - sqsat[y, x + w] - sqsat[y + h, x] + sqsat[y, x])
+        mean = s1 / area
+        var = (s2 / area) - (mean * mean)
+        return var >= (min_std * min_std)
+    roi = gray[y:y+h, x:x+w]
+    return bool(roi.size and float(np.std(roi)) >= min_std)
+
+
+def detect_text_regions(gray, orig_w, orig_h, sat=None, sqsat=None):
     """
     Detects text lines, code blocks, labels, and paragraph blocks.
     Uses horizontal morphological gradient to capture character strokes,
@@ -568,8 +672,7 @@ def detect_text_regions(gray, orig_w, orig_h):
         x, y, w, h = cv2.boundingRect(cnt)
         if w >= 20 and 8 <= h <= 54:
             # Check internal pixel standard deviation to ensure it contains texture/glyphs
-            roi = gray[y:y+h, x:x+w]
-            if roi.size and float(np.std(roi)) >= 6.0:
+            if _sat_has_std(gray, sat, sqsat, x, y, w, h, 6.0):
                 text_boxes.append({
                     'x': int(x),
                     'y': int(y),
@@ -582,22 +685,26 @@ def detect_text_regions(gray, orig_w, orig_h):
                 })
 
     # Synthesize multi-line paragraph blocks from detected text lines
-    para_boxes = cluster_text_paragraphs(text_boxes)
+    para_boxes = [
+        p for p in cluster_text_paragraphs(text_boxes)
+        if not (p['w'] >= orig_w * 0.85 and p['h'] >= orig_h * 0.65)
+    ]
     text_boxes.extend(para_boxes)
 
     # 3. Morphological closing on the line mask to also capture dense text/code blocks
-    k_para_h = cv2.getStructuringElement(cv2.MORPH_RECT, (25, 1))
+    k_para_h = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 1))
     closed_h = cv2.morphologyEx(thresh_line, cv2.MORPH_CLOSE, k_para_h)
-    k_para_v = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 30))
+    k_para_v = cv2.getStructuringElement(cv2.MORPH_RECT, (9, 14))
     closed_para = cv2.morphologyEx(closed_h, cv2.MORPH_CLOSE, k_para_v)
     contours_para, _ = cv2.findContours(closed_para, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for cnt in contours_para:
         x, y, w, h = cv2.boundingRect(cnt)
+        if w >= orig_w * 0.85 and h >= orig_h * 0.65:
+            continue
         # Paragraphs must have substantial height (at least 2 lines) and width
         if w >= 36 and h >= 26 and (w * h) >= 1000:
-            roi = gray[y:y+h, x:x+w]
-            if roi.size and float(np.std(roi)) >= 6.0:
+            if _sat_has_std(gray, sat, sqsat, x, y, w, h, 6.0):
                 text_boxes.append({
                     'x': int(x),
                     'y': int(y),
@@ -630,6 +737,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     max_area = total_area * max_area_ratio
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    sat, sqsat = cv2.integral2(gray)
 
     # 1. CLAHE enhancement (reveals low-contrast frames, dark fantasy filigree, dark mode borders)
     clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
@@ -650,21 +758,21 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     closed_standard = cv2.morphologyEx(edges_raw, cv2.MORPH_CLOSE, k_close)
     closed_edges = cv2.bitwise_or(closed_fine, closed_standard)
 
-    # 4. Large-scale morphological closing for dark/translucent panels (dialogue, chat, HUD)
-    # Apply closing on both raw gray and CLAHE filtered to detect both translucent HUDs and dark frames
+    # Integral image over sharp closed edges enables O(1) perimeter & interior density checks
+    edge_sat = cv2.integral((closed_edges > 0).astype(np.uint8))
+
+    # 4. Large-scale morphological closing kept separate so blurry blobs only form panels, never tiny slots/buttons
     k_panel = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 13))
+    k_grad = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
     closed_filtered = cv2.morphologyEx(filtered, cv2.MORPH_CLOSE, k_panel)
-    panel_grad_f = cv2.morphologyEx(closed_filtered, cv2.MORPH_GRADIENT, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+    panel_grad_f = cv2.morphologyEx(closed_filtered, cv2.MORPH_GRADIENT, k_grad)
     _, panel_edges_f = cv2.threshold(panel_grad_f, 8, 255, cv2.THRESH_BINARY)
 
     closed_gray = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, k_panel)
-    panel_grad_g = cv2.morphologyEx(closed_gray, cv2.MORPH_GRADIENT, cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)))
+    panel_grad_g = cv2.morphologyEx(closed_gray, cv2.MORPH_GRADIENT, k_grad)
     _, panel_edges_g = cv2.threshold(panel_grad_g, 12, 255, cv2.THRESH_BINARY)
 
-    combined = cv2.bitwise_or(closed_edges, cv2.bitwise_or(panel_edges_f, panel_edges_g))
-
-    # 5. Find contours using two-level hierarchy
-    contours, _ = cv2.findContours(combined, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    panel_mask = cv2.bitwise_or(panel_edges_f, panel_edges_g)
 
     raw_boxes = []
     client_boxes = []
@@ -726,6 +834,11 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
 
                                 if clamped_w >= 20 and clamped_h >= 20:
                                     is_fl = bool(c.get("floating", False))
+                                    win_class = str(c.get("class", "") or "")
+                                    # Skip fullscreen transparent overlays (e.g. BongoCat) that mask real windows below
+                                    if ("bongocat" in win_class.lower() or
+                                            (is_fl and is_pinned and clamped_w >= orig_w * 0.92 and clamped_h >= orig_h * 0.92)):
+                                        continue
                                     win_obj = {
                                         "x": int(clamped_x1),
                                         "y": int(clamped_y1),
@@ -739,7 +852,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
                                         "pinned": is_pinned,
                                         "focusHistoryID": c.get("focusHistoryID", 999),
                                         "title": c.get("title", ""),
-                                        "class": c.get("class", ""),
+                                        "class": win_class,
                                         "is_client": True
                                     }
                                     raw_boxes.append(win_obj)
@@ -747,56 +860,88 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
         except Exception:
             pass
 
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        if w < 10 or h < 10:
-            continue
+    # 5. Find contours separately on sharp UI borders and blurred panel morphs
+    for is_panel_morph, mask in ((False, closed_edges), (True, panel_mask)):
+        contours, _ = cv2.findContours(mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if is_panel_morph:
+                if w < 120 or h < 50:
+                    continue
+            elif w < 12 or h < 12:
+                continue
 
-        box_area = w * h
-        if box_area < min_area or box_area > max_area:
-            continue
+            box_area = w * h
+            if box_area < min_area or box_area > max_area:
+                continue
 
-        # Filter out extreme 1-4px line dividers
-        if (h <= 4 and w > 40) or (w <= 4 and h > 40):
-            continue
+            # Filter out extreme 1-4px line dividers
+            if (h <= 4 and w > 40) or (w <= 4 and h > 40):
+                continue
 
-        area = cv2.contourArea(cnt)
-        extent = float(area) / box_area
-        # Allow ornate/curved game panels down to 0.38 extent if substantial in size
-        min_extent = 0.38 if (w >= 160 and h >= 50) else (0.42 if box_area < 450 else 0.48)
-        if extent < min_extent:
-            continue
+            area = cv2.contourArea(cnt)
+            extent = float(area) / box_area
+            # Allow ornate/curved game panels down to 0.38 extent if substantial in size
+            min_extent = 0.38 if (w >= 160 and h >= 50) else (0.42 if box_area < 450 else 0.48)
+            if extent < min_extent:
+                continue
 
-        peri = cv2.arcLength(cnt, True)
-        approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
-        # Support ornate fantasy frames, beveled corner UI, and game HUD contours with up to 28 vertices
-        max_vertices = 24 if box_area < 500 else 28
-        if len(approx) > max_vertices:
-            continue
+            peri = cv2.arcLength(cnt, True)
+            approx = cv2.approxPolyDP(cnt, 0.02 * peri, True)
+            nv = len(approx)
+            # Support ornate fantasy frames, beveled corner UI, and game HUD contours with up to 28 vertices
+            max_vertices = 24 if box_area < 500 else 28
+            if nv > max_vertices:
+                continue
 
-        valid, contrast = is_valid_border(gray, x, y, w, h)
-        if not valid:
-            continue
+            is_big_panel = (w >= 220 and h >= 140)
+            if not is_panel_morph and not is_big_panel:
+                if nv < 4:
+                    continue
+                t = _sat_mean(edge_sat, x, y, x + w, min(y + h, y + 2))
+                b = _sat_mean(edge_sat, x, max(y, y + h - 2), x + w, y + h)
+                l = _sat_mean(edge_sat, x, y, min(x + w, x + 2), y + h)
+                r = _sat_mean(edge_sat, max(x, x + w - 2), y, x + w, y + h)
+                sides = sorted((t, b, l, r))
+                avg_edge = (t + b + l + r) * 0.25
+                in_ed = _sat_mean(edge_sat, x + 3, y + 3, x + w - 3, y + h - 3) if (w > 8 and h > 8) else 0.0
+                # Keep rounded icons/items with continuous halo & clean interior while dropping open text noise
+                is_clean_rounded = (sides[0] >= 0.25 and avg_edge >= 0.32 and in_ed <= 0.20 and extent >= 0.60)
+                if not is_clean_rounded:
+                    if sides[0] < 0.22 and sides[1] < 0.38:
+                        continue
+                    if avg_edge < 0.42:
+                        continue
+                if w < 120 and h < 48 and in_ed > 0.60:
+                    continue
 
-        # Classify basic type
-        elem_type = "detected"
-        if w >= 220 and h >= 140:
-            elem_type = "panel"
-        elif 10 <= w <= 180 and 10 <= h <= 180 and 0.65 <= (w / h) <= 1.54:
-            elem_type = "slot"
-        elif 20 <= w <= 800 and 12 <= h <= 64:
-            elem_type = "input" if w > 260 else "button"
+            valid, contrast = is_valid_border(gray, x, y, w, h, sat=sat)
+            if not valid:
+                continue
+            if not is_panel_morph and w < 48 and h < 48 and contrast < 4.5:
+                continue
 
-        raw_boxes.append({
-            "x": int(x),
-            "y": int(y),
-            "w": int(w),
-            "h": int(h),
-            "area": int(box_area),
-            "extent": round(extent, 2),
-            "contrast": round(contrast, 1),
-            "type": elem_type
-        })
+            if is_panel_morph:
+                elem_type = "panel" if is_big_panel else "detected"
+            else:
+                elem_type = "detected"
+                if is_big_panel:
+                    elem_type = "panel"
+                elif 10 <= w <= 180 and 10 <= h <= 180 and 0.65 <= (w / h) <= 1.54:
+                    elem_type = "slot"
+                elif 20 <= w <= 800 and 12 <= h <= 64:
+                    elem_type = "input" if w > 260 else "button"
+
+            raw_boxes.append({
+                "x": int(x),
+                "y": int(y),
+                "w": int(w),
+                "h": int(h),
+                "area": int(box_area),
+                "extent": round(extent, 2),
+                "contrast": round(contrast, 1),
+                "type": elem_type
+            })
 
     # Suppress periodic mesh / background texture tiling (e.g. 14+ identical tiles with low contrast)
     size_bins = {}
@@ -815,14 +960,21 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     deduped_raw = deduplicate_boxes(filtered_boxes, iou_thresh=0.72, contain_thresh=0.88)
 
     # 2. Classify nested items inside slots: if a box is inside an existing slot, mark it as 'item'
-    for b in deduped_raw:
-        for s in deduped_raw:
-            if s is not b and s.get('type') == 'slot' and s['area'] > b['area'] * 1.3:
-                if (b['x'] >= s['x'] - 2 and b['y'] >= s['y'] - 2 and
-                    b['x'] + b['w'] <= s['x'] + s['w'] + 2 and
-                    b['y'] + b['h'] <= s['y'] + s['h'] + 2):
-                    b['type'] = 'item'
-                    break
+    slots_only = [s for s in deduped_raw if s.get('type') == 'slot']
+    if slots_only:
+        for b in deduped_raw:
+            bx1 = b['x']
+            by1 = b['y']
+            bx2 = bx1 + b['w']
+            by2 = by1 + b['h']
+            thresh_area = b['area'] * 1.3
+            for s in slots_only:
+                if s is not b and s['area'] > thresh_area:
+                    if (bx1 >= s['x'] - 2 and by1 >= s['y'] - 2 and
+                            bx2 <= s['x'] + s['w'] + 2 and
+                            by2 <= s['y'] + s['h'] + 2):
+                        b['type'] = 'item'
+                        break
 
     # 3. Synthesize inventory rows and grid containers from clean slots
     synthesized = cluster_slots_and_grids(deduped_raw)
@@ -834,7 +986,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
     window_content_areas = detect_window_content_areas(gray, client_boxes)
 
     # 3d. Detect text lines, code snippets, labels, and paragraph blocks
-    text_regions = detect_text_regions(gray, orig_w, orig_h)
+    text_regions = detect_text_regions(gray, orig_w, orig_h, sat=sat, sqsat=sqsat)
 
     all_boxes = deduped_raw + synthesized + column_unions + window_content_areas + text_regions
 
@@ -861,13 +1013,23 @@ def detect_ui_elements(image_path, clients_path=None, min_area=64, max_area_rati
 
     # Semantic hierarchy depth calculation
     boxes_asc = sorted(clamped_boxes, key=lambda b: b["area"])
+    n_boxes = len(boxes_asc)
     for i, box in enumerate(boxes_asc):
         box["id"] = i
-        parents = [p for p in boxes_asc if p["area"] > box["area"] * 1.05 and
-                   box["x"] >= p["x"] - 4 and box["y"] >= p["y"] - 4 and
-                   box["x"] + box["w"] <= p["x"] + p["w"] + 4 and
-                   box["y"] + box["h"] <= p["y"] + p["h"] + 4]
-        box["depth"] = len(parents)
+        bx1 = box["x"]
+        by1 = box["y"]
+        bx2 = bx1 + box["w"]
+        by2 = by1 + box["h"]
+        min_parent_area = box["area"] * 1.05
+        depth = 0
+        for j in range(i + 1, n_boxes):
+            p = boxes_asc[j]
+            if (p["area"] > min_parent_area and
+                    bx1 >= p["x"] - 4 and by1 >= p["y"] - 4 and
+                    bx2 <= p["x"] + p["w"] + 4 and
+                    by2 <= p["y"] + p["h"] + 4):
+                depth += 1
+        box["depth"] = depth
 
     final_boxes = sorted(boxes_asc, key=lambda b: b["area"], reverse=True)
     elapsed_ms = round((time.time() - start_time) * 1000, 1)

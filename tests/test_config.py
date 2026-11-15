@@ -115,6 +115,69 @@ class TestConfiguration(unittest.TestCase):
         self.assertIn("finally {", content)
         self.assertIn("root.closeOverlay();", content)
         self.assertIn("function shellEscape(s)", content, "shellEscape must be defined in shell.qml")
+        self.assertIn("yyyy-MM-dd_HH-mm-ss", content, "Timestamps must use 24-hour HH format")
+        self.assertNotIn("yyyy-MM-dd_hh-mm-ss", content, "Timestamps must not use 12-hour hh format")
+
+    def test_do_annotate_satty_command_quoting(self):
+        shell_qml = os.path.join(REPO_DIR, "shell.qml")
+        with open(shell_qml, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Ensure satty --copy-command uses shellEscape instead of raw nested double quotes
+        self.assertNotIn('\\"Snímek', content)
+        self.assertIn("--copy-command ${shellEscape(sattyCopyCmd)}", content)
+
+        # Verify generated command syntax and mock satty argument parsing with spaces/diacritics
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            mock_bin = os.path.join(tmp_dir, "bin")
+            os.makedirs(mock_bin, exist_ok=True)
+            args_log = os.path.join(tmp_dir, "satty_args.json")
+            mock_satty = os.path.join(mock_bin, "satty")
+            with open(mock_satty, "w", encoding="utf-8") as f:
+                f.write(
+                    "#!/usr/bin/env python3\n"
+                    "import json, sys\n"
+                    f"with open({args_log!r}, 'w', encoding='utf-8') as out:\n"
+                    "    json.dump(sys.argv[1:], out)\n"
+                )
+            os.chmod(mock_satty, 0o755)
+
+            import shlex
+            copy_desc = "Výřez byl zkopírován do schránky"
+            satty_copy_cmd = (
+                "sh -c 'wl-copy --type image/png && "
+                "(caelestia-toast -t success -i content_copy -a Satty \"$1\" \"$2\" 2>/dev/null "
+                "|| notify-send -a Satty \"$1\" \"$2\" 2>/dev/null || true)' _ 'Satty' "
+                + shlex.quote(copy_desc)
+            )
+            temp_crop = os.path.join(tmp_dir, "annot.png")
+            out_path = os.path.join(tmp_dir, "out.png")
+            with open(temp_crop, "wb") as f:
+                f.write(b"png")
+
+            cmd = (
+                f"if command -v satty >/dev/null 2>&1; then "
+                f"satty --filename {shlex.quote(temp_crop)} --output-filename {shlex.quote(out_path)} "
+                f"--early-exit --copy-command {shlex.quote(satty_copy_cmd)} --initial-tool brush; "
+                f"rm -f {shlex.quote(temp_crop)}; fi"
+            )
+            env = os.environ.copy()
+            env["PATH"] = mock_bin + os.pathsep + env.get("PATH", "")
+            proc = subprocess.run(["sh", "-c", cmd], env=env, capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertFalse(os.path.exists(temp_crop), "tempCrop should be removed after satty exits")
+            with open(args_log, "r", encoding="utf-8") as f:
+                argv = json.load(f)
+            self.assertEqual(
+                argv,
+                [
+                    "--filename", temp_crop,
+                    "--output-filename", out_path,
+                    "--early-exit",
+                    "--copy-command", satty_copy_cmd,
+                    "--initial-tool", "brush",
+                ],
+            )
 
     def test_qmllint_components(self):
         if not shutil.which("qmllint"):
@@ -131,6 +194,24 @@ class TestConfiguration(unittest.TestCase):
             text=True,
         )
         self.assertEqual(proc.returncode, 0, f"qmllint failed:\n{proc.stdout}\n{proc.stderr}")
+
+    def test_app_rules_and_smart_selector_preset_filters(self):
+        with open(CONFIG_JSON, "r", encoding="utf-8") as f:
+            cfg = json.load(f)
+        for app_key, expected_preset in (("librewolf", "browser"), ("steam_app", "game"), ("ghostty", "terminal")):
+            self.assertEqual(cfg["appRules"].get(app_key), expected_preset)
+
+        with open(os.path.join(REPO_DIR, "components", "Config.qml"), "r", encoding="utf-8") as f:
+            config_qml = f.read()
+        self.assertIn('"librewolf": "browser"', config_qml)
+        self.assertIn('"steam_app": "game"', config_qml)
+
+        with open(os.path.join(REPO_DIR, "components", "SmartSelector.qml"), "r", encoding="utf-8") as f:
+            selector_qml = f.read()
+        self.assertIn('preset.filter === "dense"', selector_qml)
+        self.assertIn('preset.filter === "window"', selector_qml)
+        self.assertIn('preset.filter === "content"', selector_qml)
+        self.assertIn("bongocat", selector_qml)
 
 
 if __name__ == "__main__":

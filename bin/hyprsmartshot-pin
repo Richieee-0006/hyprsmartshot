@@ -272,16 +272,30 @@ if HAS_PYSIDE6:
                 cb.setPixmap(self.orig_pixmap)
                 copied = True
 
-            if copied and shutil.which("notify-send"):
-                try:
-                    subprocess.run([
-                        "notify-send",
-                        "-a", "HyprSmartShot",
-                        "HyprSmartShot",
-                        "Screenshot copied to clipboard"
-                    ], check=False)
-                except Exception:
-                    pass
+            if copied:
+                toast_bin = shutil.which("caelestia-toast")
+                if toast_bin:
+                    try:
+                        subprocess.Popen([
+                            toast_bin,
+                            "-t", "success",
+                            "-i", "content_copy",
+                            "-a", "HyprSmartShot",
+                            "HyprSmartShot",
+                            "Screenshot copied to clipboard"
+                        ])
+                    except Exception:
+                        pass
+                elif shutil.which("notify-send"):
+                    try:
+                        subprocess.run([
+                            "notify-send",
+                            "-a", "HyprSmartShot",
+                            "HyprSmartShot",
+                            "Screenshot copied to clipboard"
+                        ], check=False)
+                    except Exception:
+                        pass
 else:
     class PinWindow:
         pass

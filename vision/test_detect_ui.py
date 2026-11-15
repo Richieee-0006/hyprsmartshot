@@ -636,5 +636,43 @@ class TestUIDetector(unittest.TestCase):
         chat_pane = [b for b in boxes if abs(b["x"] - 312) <= 8 and abs(b["w"] - 648) <= 16]
         self.assertGreaterEqual(len(chat_pane), 1, "Main chat pane (648px) should be detected")
 
+    def test_fullscreen_pinned_overlay_skipped(self):
+        img = np.full((720, 1280, 3), 24, dtype=np.uint8)
+        cv2.rectangle(img, (40, 20), (1240, 700), (35, 35, 35), -1)
+        path = self._save_img("bongo_overlay.png", img)
+        clients_json = os.path.join(self.temp_dir.name, "bongo_clients.json")
+        import json
+        with open(clients_json, "w") as f:
+            json.dump([
+                {"at": [0, 0], "size": [1280, 720], "floating": True, "pinned": True, "title": "BongoCat", "class": "BongoCat.x86_64", "hidden": False, "mapped": True},
+                {"at": [40, 20], "size": [1200, 680], "floating": False, "pinned": False, "title": "kitty", "class": "kitty", "hidden": False, "mapped": True}
+            ], f)
+
+        res = detect_ui_elements(path, clients_path=clients_json)
+        floating_wins = [b for b in res["boxes"] if b.get("type") == "floating_window"]
+        tiled_wins = [b for b in res["boxes"] if b.get("type") == "window"]
+        self.assertEqual(len(floating_wins), 0, "Fullscreen pinned overlay should be skipped")
+        self.assertEqual(len(tiled_wins), 1, "Underlying tiled window should remain selectable")
+
+    def test_dense_terminal_text_no_slot_explosion_or_screen_text_block(self):
+        # Simulated dark terminal screen with multiple separated columns/blocks of text
+        img = np.full((720, 1280, 3), 20, dtype=np.uint8)
+        for row in range(18):
+            y = 40 + row * 34
+            cv2.putText(img, f"user@host:~/project$ cmd --arg {row} ok", (50, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (210, 210, 210), 1)
+            cv2.putText(img, f"[{row:02d}] status=PASS latency=12ms", (720, y),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (140, 200, 140), 1)
+        path = self._save_img("dense_terminal.png", img)
+
+        res = detect_ui_elements(path)
+        slots = [b for b in res["boxes"] if b.get("type") == "slot"]
+        mega_text = [
+            b for b in res["boxes"]
+            if b.get("type") == "text_block" and b["w"] >= 1280 * 0.85 and b["h"] >= 720 * 0.65
+        ]
+        self.assertLessEqual(len(slots), 2, f"Terminal glyphs should not explode into fake slots, got {len(slots)}")
+        self.assertEqual(len(mega_text), 0, "Separated text columns should not merge into fullscreen text_block")
+
 if __name__ == "__main__":
     unittest.main()

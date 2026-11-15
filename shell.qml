@@ -13,31 +13,29 @@ Scope {
     property string mode: Quickshell.env("SMARTSHOT_MODE") || "universal"
     property bool magnifierActive: false
 
+    readonly property real envMonitorX: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0")
+    readonly property real envMonitorY: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0")
+    readonly property real envMonitorScale: {
+        const s = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_SCALE") || "1.0");
+        return (s > 0) ? s : 1.0;
+    }
+    readonly property real envMonitorW: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_W") || "1920")
+    readonly property real envMonitorH: parseFloat(Quickshell.env("SMARTSHOT_MONITOR_H") || "1080")
+    readonly property string picturesDir: (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots"
+
     function shellEscape(s) {
         if (s === undefined || s === null) return "''";
         return "'" + String(s).replace(/'/g, "'\\''") + "'";
     }
 
-    function grimGeometry(x, y, width, height) {
-        let envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
-        let envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
-        let mon = hyprlandMonitor;
-        const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
-        const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
-        return `${Math.round(x + ox)},${Math.round(y + oy)} ${Math.round(width)}x${Math.round(height)}`;
-    }
-
-    function cropCommand(x, y, width, height, destFile) {
-        let envOx = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_X") || "0");
-        let envOy = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_Y") || "0");
-        let mon = hyprlandMonitor;
-        const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : envOx;
-        const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : envOy;
-        const s = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_SCALE") || "1.0");
-        const scale = (s > 0) ? s : 1.0;
-
-        const maxW = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_W") || "1920");
-        const maxH = parseFloat(Quickshell.env("SMARTSHOT_MONITOR_H") || "1080");
+    function cropCommand(x, y, width, height, destFile, compressionLevel) {
+        const comp = (compressionLevel !== undefined && compressionLevel !== null) ? compressionLevel : 1;
+        const mon = hyprlandMonitor;
+        const ox = (mon && mon.lastIpcObject) ? mon.lastIpcObject.x : root.envMonitorX;
+        const oy = (mon && mon.lastIpcObject) ? mon.lastIpcObject.y : root.envMonitorY;
+        const scale = root.envMonitorScale;
+        const maxW = root.envMonitorW;
+        const maxH = root.envMonitorH;
 
         // Subpixel endpoint-difference transform to eliminate 1px rounding drift
         const cx1 = Math.max(0, Math.min(maxW, Math.round(x * scale)));
@@ -49,8 +47,9 @@ Scope {
         const ch = Math.max(1, cy2 - cy1);
 
         const geom = `${Math.round(x + ox)},${Math.round(y + oy)} ${Math.round(width)}x${Math.round(height)}`;
+        const destEsc = shellEscape(destFile);
 
-        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then if command -v magick >/dev/null 2>&1; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx1}+${cy1} +repage ${shellEscape(destFile)}; else convert /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx1}+${cy1} +repage ${shellEscape(destFile)}; fi; else grim -s ${scale} -g ${shellEscape(geom)} ${shellEscape(destFile)}; fi`;
+        return `if [ -f /tmp/hyprsmartshot_freeze.png ]; then if command -v magick >/dev/null 2>&1; then magick /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx1}+${cy1} +repage -define png:compression-level=${comp} ${destEsc}; else convert /tmp/hyprsmartshot_freeze.png -crop ${cw}x${ch}+${cx1}+${cy1} +repage -define png:compression-level=${comp} ${destEsc}; fi; else grim -l ${comp} -s ${scale} -g ${shellEscape(geom)} ${destEsc}; fi`;
     }
 
     function playShutterSound() {
@@ -75,12 +74,12 @@ Scope {
     function doCopy(x, y, width, height) {
         try {
             const tempCrop = `/tmp/hyprsmartshot_crop_${Date.now()}.png`;
-            const crop = cropCommand(x, y, width, height, tempCrop);
+            const crop = cropCommand(x, y, width, height, tempCrop, 0);
             const title = I18n.t("copyTitle");
             const desc = I18n.t("copyDesc");
             const hook = (typeof Config !== "undefined" && Config && Config.postCopyHook) ? Config.postCopyHook.trim() : "";
             const hookCmd = hook ? ` (${hook.replace(/\{path\}/g, shellEscape(tempCrop))});` : "";
-            const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && {${hookCmd} rm -f ${shellEscape(tempCrop)}; }`;
+            const cmd = `${crop} && wl-copy --type image/png < ${shellEscape(tempCrop)} && (caelestia-toast -t success -i content_copy -a "HyprSmartShot" ${shellEscape(title)} ${shellEscape(desc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} -h string:image-path:${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)}) && {${hookCmd} (sleep 10 && rm -f ${shellEscape(tempCrop)}) >/dev/null 2>&1 & }`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
         } catch (e) {
@@ -92,15 +91,15 @@ Scope {
 
     function doSave(x, y, width, height) {
         try {
-            const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
-            const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
+            const saveDir = root.picturesDir;
+            const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss");
             const outputPath = `${saveDir}/screenshot-${timestamp}.png`;
-            const crop = cropCommand(x, y, width, height, outputPath);
+            const crop = cropCommand(x, y, width, height, outputPath, 4);
             const title = I18n.t("saveTitle");
             const desc = I18n.t("saveDesc").replace("{path}", outputPath);
             const hook = (typeof Config !== "undefined" && Config && Config.postSaveHook) ? Config.postSaveHook.trim() : "";
             const hookCmd = hook ? ` && (${hook.replace(/\{path\}/g, shellEscape(outputPath))})` : "";
-            const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)}${hookCmd}`;
+            const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && wl-copy --type image/png < ${shellEscape(outputPath)} && (caelestia-toast -t success -i save -a "HyprSmartShot" ${shellEscape(title)} ${shellEscape(desc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(outputPath)} -h string:image-path:${shellEscape(outputPath)} ${shellEscape(title)} ${shellEscape(desc)})${hookCmd}`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
         } catch (e) {
@@ -113,11 +112,11 @@ Scope {
     function doPin(x, y, width, height) {
         try {
             const tempCrop = `/tmp/hyprsmartshot_pin_${Date.now()}.png`;
-            const crop = cropCommand(x, y, width, height, tempCrop);
+            const crop = cropCommand(x, y, width, height, tempCrop, 0);
             const title = I18n.t("pinTitle");
             const desc = I18n.t("pinDesc");
             const pinCmd = `if command -v hyprsmartshot-pin >/dev/null 2>&1; then hyprsmartshot-pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; elif [ -n "$SMARTSHOT_DIR" ] && [ -x "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ]; then "$SMARTSHOT_DIR/bin/hyprsmartshot-pin" ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; else hyprsmartshot pin ${shellEscape(tempCrop)} ${Math.round(x)} ${Math.round(y)} ${Math.round(width)} ${Math.round(height)}; fi`;
-            const cmd = `${crop} && notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)} && (${pinCmd}; rm -f ${shellEscape(tempCrop)}) &`;
+            const cmd = `${crop} && (caelestia-toast -t info -i push_pin -a "HyprSmartShot" ${shellEscape(title)} ${shellEscape(desc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} -h string:image-path:${shellEscape(tempCrop)} ${shellEscape(title)} ${shellEscape(desc)}) && (${pinCmd}; (sleep 10 && rm -f ${shellEscape(tempCrop)}) >/dev/null 2>&1 &) &`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
         } catch (e) {
@@ -129,25 +128,29 @@ Scope {
 
     function doAnnotate(x, y, width, height) {
         try {
-            const saveDir = (Quickshell.env("XDG_PICTURES_DIR") || (Quickshell.env("HOME") + "/Pictures")) + "/Screenshots";
-            const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_hh-mm-ss");
+            const saveDir = root.picturesDir;
+            const timestamp = Qt.formatDateTime(new Date(), "yyyy-MM-dd_HH-mm-ss");
             const outputPath = `${saveDir}/annotation-${timestamp}.png`;
             const tempCrop = `/tmp/hyprsmartshot_annot_${Date.now()}.png`;
-            const crop = cropCommand(x, y, width, height, tempCrop);
+            const crop = cropCommand(x, y, width, height, tempCrop, 0);
+            const copyDesc = I18n.t("copyDesc");
+            const sattyCopyCmd = `sh -c 'wl-copy --type image/png && (caelestia-toast -t success -i content_copy -a Satty "$1" "$2" 2>/dev/null || notify-send -a Satty "$1" "$2" 2>/dev/null || true)' _ 'Satty' ${shellEscape(copyDesc)}`;
             const notFoundTitle = I18n.t("annotateNotFoundTitle");
             const notFoundDesc = I18n.t("annotateNotFoundDesc");
 
             const cmd = `mkdir -p ${shellEscape(saveDir)} && ${crop} && {
                 if command -v satty >/dev/null 2>&1; then
-                    satty --filename ${shellEscape(tempCrop)} --output-filename ${shellEscape(outputPath)} --early-exit --copy-command "wl-copy --type image/png" --initial-tool brush
+                    satty --filename ${shellEscape(tempCrop)} --output-filename ${shellEscape(outputPath)} --early-exit --copy-command ${shellEscape(sattyCopyCmd)} --initial-tool brush
+                    rm -f ${shellEscape(tempCrop)}
                 elif command -v swappy >/dev/null 2>&1; then
                     swappy -f ${shellEscape(tempCrop)} -o ${shellEscape(outputPath)}
+                    rm -f ${shellEscape(tempCrop)}
                 else
                     wl-copy --type image/png < ${shellEscape(tempCrop)}
-                    notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
+                    (caelestia-toast -t warn -i error -a "HyprSmartShot" ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} -h string:image-path:${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)})
+                    (sleep 10 && rm -f ${shellEscape(tempCrop)}) >/dev/null 2>&1 &
                 fi
-                rm -f ${shellEscape(tempCrop)}
-            } &`;
+            }`;
 
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
@@ -161,7 +164,7 @@ Scope {
     function doOcr(x, y, width, height) {
         try {
             const tempCrop = `/tmp/hyprsmartshot_ocr_${Date.now()}.png`;
-            const crop = cropCommand(x, y, width, height, tempCrop);
+            const crop = cropCommand(x, y, width, height, tempCrop, 0);
             const ocrTitle = I18n.t("ocrTitle");
             const ocrDesc = I18n.t("ocrDesc");
             const ocrNoTextTitle = I18n.t("ocrNoTextTitle");
@@ -173,17 +176,17 @@ Scope {
             const cmd = `${crop} && {
                 if command -v tesseract >/dev/null 2>&1; then
                     TEXT=$(tesseract ${shellEscape(tempCrop)} stdout -l ${shellEscape(ocrLangs)} 2>/dev/null || true)
-                    if [ -n "$TEXT" ]; then
+                    if printf '%s' "$TEXT" | grep -q '[^[:space:]]'; then
                         printf "%s" "$TEXT" | wl-copy
-                        notify-send -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)}
+                        caelestia-toast -t success -i text_fields -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)} || notify-send -a "HyprSmartShot" ${shellEscape(ocrTitle)} ${shellEscape(ocrDesc)}
                     else
-                        notify-send -a "HyprSmartShot" ${shellEscape(ocrNoTextTitle)} ${shellEscape(ocrNoTextDesc)}
+                        caelestia-toast -t warn -i text_format -a "HyprSmartShot" ${shellEscape(ocrNoTextTitle)} ${shellEscape(ocrNoTextDesc)} || notify-send -a "HyprSmartShot" ${shellEscape(ocrNoTextTitle)} ${shellEscape(ocrNoTextDesc)}
                     fi
                 else
                     wl-copy --type image/png < ${shellEscape(tempCrop)}
-                    notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)}
+                    (caelestia-toast -t warn -i error -a "HyprSmartShot" ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)} || notify-send -a "HyprSmartShot" -i ${shellEscape(tempCrop)} -h string:image-path:${shellEscape(tempCrop)} ${shellEscape(notFoundTitle)} ${shellEscape(notFoundDesc)})
                 fi
-                rm -f ${shellEscape(tempCrop)}
+                (sleep 10 && rm -f ${shellEscape(tempCrop)}) >/dev/null 2>&1 &
             }`;
             playShutterSound();
             Quickshell.execDetached(["sh", "-c", cmd]);
@@ -251,6 +254,7 @@ Scope {
         Magnifier {
             id: magnifier
             active: root.magnifierActive
+            sourceImage: freezeWindow.backgroundImage
             targetX: selector.cursorX
             targetY: selector.cursorY
             z: 40
@@ -290,6 +294,8 @@ Scope {
                 event.accepted = true;
                 if (controlBar.presetDropdownOpen) {
                     controlBar.presetDropdownOpen = false;
+                } else if (selector.closePopups()) {
+                    return;
                 } else if (selector.isConfirmed) {
                     selector.clearConfirmation();
                 } else {
@@ -309,16 +315,6 @@ Scope {
                 }
             }
             Keys.onPressed: (event) => {
-                // Escape fallback
-                if (event.key === Qt.Key_Escape) {
-                    event.accepted = true;
-                    if (selector.isConfirmed) {
-                        selector.clearConfirmation();
-                    } else {
-                        root.closeOverlay();
-                    }
-                    return;
-                }
 
                 // Q or Ctrl+Q: Close Overlay
                 if (((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Q) || (!selector.isConfirmed && event.key === Qt.Key_Q)) {
