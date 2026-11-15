@@ -190,5 +190,10 @@ class TestCLIArguments(unittest.TestCase):
         self.assertIn("--border-color", proc.stdout)
         self.assertIn("--bg-color", proc.stdout)
 
+    def test_window_command_accepted_with_help(self):
+        proc = subprocess.run([RUNNER_BIN, "window", "--help"], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("Usage:", proc.stdout)
+
 if __name__ == "__main__":
     unittest.main()

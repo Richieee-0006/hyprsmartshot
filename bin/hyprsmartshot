@@ -172,7 +172,7 @@ elif [ ${#POSITIONAL_ARGS[@]} -ge 1 ]; then
 fi
 
 case "$MODE" in
-    universal|screen|full)
+    universal|window|screen|full)
         ;;
     *)
         echo "Error: Unknown command '$MODE'" >&2
@@ -489,6 +489,7 @@ export SMARTSHOT_ACTIVE_CLASS="$ACTIVE_CLASS"
 # 4. Export mode to Quickshell (universal is all-in-one Smart mode)
 case "$MODE" in
     screen|full) export SMARTSHOT_MODE="screen" ;;
+    window)      export SMARTSHOT_MODE="window" ;;
     *)           export SMARTSHOT_MODE="universal" ;;
 esac
 

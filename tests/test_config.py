@@ -260,6 +260,10 @@ class TestConfiguration(unittest.TestCase):
             Scope {{
                 id: root
                 SettingsModal {{ id: modal; open: false }}
+                ControlBar {{ id: bar; currentMode: "universal"; currentPreset: "default" }}
+                ActionPill {{ id: pill; selectionW: 100; selectionH: 50 }}
+                Magnifier {{ id: mag; active: false; zoomFactor: 3.5 }}
+                SmartSelector {{ id: sel; width: 1280; height: 720 }}
                 Timer {{
                     interval: 20
                     repeat: true

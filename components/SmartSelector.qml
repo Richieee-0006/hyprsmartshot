@@ -287,6 +287,7 @@ Item {
     FileView {
         id: aiBoxesFile
         path: Quickshell.env("SMARTSHOT_AI_JSON") || "/tmp/hyprsmartshot_ai_boxes.json"
+        printErrors: false
         watchChanges: true
         onFileChanged: reload()
         onLoaded: root.loadAiBoxes(text())

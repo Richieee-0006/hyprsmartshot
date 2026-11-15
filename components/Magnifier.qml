@@ -8,8 +8,8 @@ Rectangle {
     property real targetY: 0
     property bool active: false
     property var sourceImage: null
-    readonly property real zoomFactor: 4.0
-    readonly property real sampleSize: width / zoomFactor
+    property real zoomFactor: (typeof Config !== "undefined" && Config && Config.ui && Config.ui.magnifierZoom) ? Number(Config.ui.magnifierZoom) : 3.0
+    readonly property real sampleSize: width / Math.max(1.0, zoomFactor)
 
     width: Config.ui.magnifierSize || 130
     height: Config.ui.magnifierSize || 130
