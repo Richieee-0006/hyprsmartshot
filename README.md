@@ -8,84 +8,69 @@
 [![CI](https://github.com/Richieee-0006/hyprsmartshot/actions/workflows/ci.yml/badge.svg)](https://github.com/Richieee-0006/hyprsmartshot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprland** on Wayland. HyprSmartShot harnesses high-performance Computer Vision (OpenCV) to detect in-game interface panels, inventory grids, individual item slots, dialogue windows, and floating desktop overlays in real time.
-
----
+Screenshot and annotation tool for Hyprland on Wayland. Uses OpenCV to detect game inventory grids, item slots, dialogue windows, and floating overlays.
 
 ## Features
 
 | Feature | Description |
 | :--- | :--- |
-| **Game UI & Inventory Detection** | Sub-60ms OpenCV contour engine automatically detects square slots, rectangular rows, entire inventory grids (e.g. Minecraft, WoW, Diablo, Terraria), dialogue boxes, buttons, and ornate RPG frames down to 10×10 pixels. |
-| **Hierarchical Wheel Zoom** | Seamlessly navigate UI nesting using the mouse scroll wheel (`Scroll Up / Down`) — drill down to a single item slot or zoom out to the containing grid row, full bag container, or game window. |
-| **Instant Freezed Framebuffer** | Leverages `grim` to capture and hold a freeze-frame before spawning the overlay, preventing window-snapping stutter, cursor flicker, or moving elements from desyncing during selection. |
-| **Floating Overlay Prioritization** | Automatically resolves Hyprland window stacking order: floating overlay dialogs and pinned windows take precedence over background tiled windows. |
-| **Magnetic Snapping** | Freehand dragging magnetically snaps selection borders to detected UI bounds, window frames, and screen edges. |
-| **Confirmation Mode & Controls** | Left-click locks the candidate selection into place, spawning a sleek floating action bar directly beneath the cursor with 8 resize handles for precise adjustments. |
-| **Instant Annotation (Satty)** | Fully integrated with **Satty v0.22+** running as a centered, floating dialog with Catppuccin theme styling and brush smoothing. |
-| **Optical Character Recognition** | Fast one-key OCR powered by `tesseract` (English & Czech preconfigured) with recognized text instantly copied to the Wayland clipboard. |
-| **Pixel Magnifier** | Press `Alt` to toggle an ultra-sharp 4× pixel magnifier with cursor coordinate readouts. |
-
----
+| **Game UI & Inventory Detection** | OpenCV contour engine (<60ms) detects square slots, rows, inventory grids (Minecraft, WoW, Diablo, Terraria), dialogue boxes, buttons, and RPG frames down to 10×10 px. |
+| **Hierarchical Wheel Zoom** | Scroll Up/Down steps between nested UI elements: item slot, grid row, bag container, and game window. |
+| **Frozen Framebuffer** | Captures the screen with `grim` before opening the overlay so moving elements stay still during selection. |
+| **Floating Overlay Prioritization** | Respects Hyprland stacking order so floating dialogs and pinned windows take precedence over tiled windows behind them. |
+| **Magnetic Snapping** | Freehand dragging snaps selection edges to detected UI bounds, window frames, and monitor edges. |
+| **Confirmation Mode & Controls** | Left-click locks the selection and shows an action bar with 8 resize handles. |
+| **Annotation (Satty)** | Opens the selection in Satty v0.22+ as a centered floating window with Catppuccin styling. |
+| **OCR** | Runs `tesseract` (English & Czech preconfigured) on the selection and copies recognized text to the Wayland clipboard. |
+| **Pixel Magnifier** | `Alt` toggles a 4× pixel magnifier with cursor coordinate readouts. |
 
 ## Capture Modes
 
 | Mode | Command | Description |
 | :--- | :--- | :--- |
-| **Smart / Universal (Default)** | `hyprsmartshot universal` | All-in-one detection combining Computer Vision UI analysis, Hyprland window boundaries, and freehand magnetic selection. |
-| **Full Screen** | `hyprsmartshot screen` | Interactive screenshot overlay covering the entire focused monitor. |
-| **Fast Fullscreen** | `hyprsmartshot full` | Instant non-interactive capture of the focused monitor directly to disk and clipboard. |
-| **Pin to Screen** | `hyprsmartshot pin <image> [x] [y] [w] [h]` | Display image in a floating, pinned native Wayland window. |
-
----
+| **Smart / Universal (Default)** | `hyprsmartshot universal` | Combines OpenCV UI detection, Hyprland window bounds, and freehand magnetic selection. |
+| **Full Screen** | `hyprsmartshot screen` | Interactive overlay across the focused monitor. |
+| **Fast Fullscreen** | `hyprsmartshot full` | Non-interactive capture of the focused monitor directly to disk and clipboard. |
+| **Pin to Screen** | `hyprsmartshot pin <image> [x] [y] [w] [h]` | Displays an image in a floating, pinned Wayland window. |
 
 ## Controls & Shortcuts
 
 | Input | Action |
 | :--- | :--- |
-| **Mouse Hover** | Highlight and smoothly snap to detected game slots, UI elements, or windows |
-| **Mouse Drag** | Freehand region selection with magnetic boundary snapping |
-| **Mouse Wheel (Scroll)** | Cycle semantic hierarchy (e.g. `Item Slot` $\leftrightarrow$ `Grid Row` $\leftrightarrow$ `Bag Container` $\leftrightarrow$ `Game Window`) |
-| **Left Click** | **Confirmation Mode**: Locks selection and displays action bar under cursor |
+| **Mouse Hover** | Highlight and snap to detected game slots, UI elements, or windows |
+| **Mouse Drag** | Freehand region selection with magnetic snapping |
+| **Mouse Wheel (Scroll)** | Cycle semantic hierarchy (`Item Slot` $\leftrightarrow$ `Grid Row` $\leftrightarrow$ `Bag Container` $\leftrightarrow$ `Game Window`) |
+| **Left Click** | Lock selection and show action bar under cursor |
 | **Enter / Double Click** | Copy selection to clipboard (`wl-copy`) and close overlay |
 | **Ctrl + S** | Save image to `~/Pictures/Screenshots/` and copy to clipboard |
-| **P** | **Pin to Screen**: Open selection in a floating, draggable, zoomable native Wayland window |
-| **A / E** | Open selection in annotation editor (Satty) |
-| **O** | Run OCR on selected region and copy recognized text to clipboard |
-| **Alt** | Toggle pixel-level inspection magnifier |
-| **Esc / Right Click** | Unlock confirmed selection / Cancel and close overlay |
-| **1 / 2** | Switch active mode on the fly (`Smart` / `Screen`) |
-
----
+| **P** | Open selection in a floating, draggable, zoomable Wayland window |
+| **A / E** | Open selection in Satty |
+| **O** | Run OCR on selected region and copy text to clipboard |
+| **Alt** | Toggle 4× pixel magnifier |
+| **Esc / Right Click** | Unlock confirmed selection or cancel and close overlay |
+| **1 / 2** | Switch active mode (`Smart` / `Screen`) |
 
 ## Dependencies & License Compatibility
 
-HyprSmartShot is licensed under the permissive **[MIT License](LICENSE)**. Below is the complete dependency matrix and license compatibility analysis:
+HyprSmartShot is licensed under the [MIT License](LICENSE). External CLI tools (`grim`, `slurp`, `satty`, `wl-copy`, `tesseract`) run in separate subprocesses.
 
-| Component | Role | Project License | Compatibility with MIT |
-| :--- | :--- | :--- | :--- |
-| **[QuickShell](https://quickshell.org)** | Wayland QML shell host | **LGPL-3.0** | **Fully Compatible**: HyprSmartShot scripts and QML are independent client code executed by the standalone `quickshell` runtime without modifying the QuickShell library itself. |
-| **[OpenCV (Python)](https://opencv.org)** | Computer Vision contour engine | **Apache-2.0** | **Fully Compatible**: Apache 2.0 is a permissive license that explicitly permits sublicensing and integration into MIT-licensed projects. |
-| **[NumPy](https://numpy.org)** | Matrix & array calculations | **BSD-3-Clause** | **Fully Compatible**: BSD-3-Clause permits incorporation into MIT projects provided copyright notices are preserved. |
-| **[PySide6 (Qt6)](https://wiki.qt.io/Qt_for_Python)** | Native Wayland Pin Window viewer | **LGPL-3.0** | **Fully Compatible**: Invoked as dynamic runtime library; falls back to native viewers (`swayimg`, `imv`, `feh`) if not installed. |
-| **[grim](https://gitlab.freedesktop.org/emersion/grim)** | Screen capture utility | **MIT** | **Fully Compatible**: Identical license terms. |
-| **[slurp](https://github.com/emersion/slurp)** | Screen region selector | **MIT** | **Fully Compatible**: Identical license terms. |
-| **[Satty](https://github.com/gabm/Satty)** | Screenshot annotation editor | **MPL-2.0** | **Fully Compatible**: Satty is executed as an external standalone CLI tool via process isolation (`sh -c`). Weak copyleft (MPL) does not apply to calling scripts. |
-| **[Tesseract](https://github.com/tesseract-ocr/tesseract)** | OCR engine | **Apache-2.0** | **Fully Compatible**: Permissive Apache 2.0 license. |
-| **[wl-clipboard](https://github.com/bugaevc/wl-clipboard)** | Wayland clipboard manager | **GPL-3.0-or-later**| **Fully Compatible**: Invoked as an external command-line utility (`wl-copy`). Subprocess CLI invocation does not constitute a derivative work under GPL terms. |
-| **[Pywal](https://github.com/dylanaraps/pywal)** | Dynamic color generation | **MIT** | **Fully Compatible**: Identical license terms. |
-| **[JetBrainsMono Nerd Font](https://www.nerdfonts.com)** | UI typography | **OFL-1.1** | **Fully Compatible**: Open Font License permits bundling and display. |
-
-> [!NOTE]
-> **Legal Compliance Guarantee**: All external CLI tools (`grim`, `slurp`, `satty`, `wl-copy`, `tesseract`) are decoupled through standard Wayland inter-process communication and POSIX shells. No proprietary or copyleft restrictions are imposed on user installations or derivative workflows.
-
----
+| Component | Role | License |
+| :--- | :--- | :--- |
+| **[QuickShell](https://quickshell.org)** | Wayland QML shell host | LGPL-3.0 |
+| **[OpenCV (Python)](https://opencv.org)** | Computer Vision contour engine | Apache-2.0 |
+| **[NumPy](https://numpy.org)** | Matrix & array calculations | BSD-3-Clause |
+| **[PySide6 (Qt6)](https://wiki.qt.io/Qt_for_Python)** | Pin window viewer (falls back to `swayimg`, `imv`, `feh`) | LGPL-3.0 |
+| **[grim](https://gitlab.freedesktop.org/emersion/grim)** | Screen capture | MIT |
+| **[slurp](https://github.com/emersion/slurp)** | Region selector | MIT |
+| **[Satty](https://github.com/gabm/Satty)** | Annotation editor | MPL-2.0 |
+| **[Tesseract](https://github.com/tesseract-ocr/tesseract)** | OCR engine | Apache-2.0 |
+| **[wl-clipboard](https://github.com/bugaevc/wl-clipboard)** | Wayland clipboard utility | GPL-3.0-or-later |
+| **[Pywal](https://github.com/dylanaraps/pywal)** | Dynamic color generation | MIT |
+| **[JetBrainsMono Nerd Font](https://www.nerdfonts.com)** | UI typography | OFL-1.1 |
 
 ## Installation
 
 ### 1. Prerequisites (Arch Linux / CachyOS)
-
-Install core packages via `pacman`:
 
 ```bash
 sudo pacman -S --needed \
@@ -102,9 +87,7 @@ sudo pacman -S --needed \
     python-pyside6
 ```
 
-### 2. Clone & Run Automated Setup
-
-Clone the repository to your user data directory and run the installer:
+### 2. Clone & Run Setup
 
 ```bash
 git clone git@github.com:Richieee-0006/hyprsmartshot.git ~/.local/share/hyprsmartshot
@@ -113,18 +96,14 @@ chmod +x install.sh
 ./install.sh
 ```
 
-The installer automatically:
-1. Creates an isolated Python virtual environment (`.venv`) and installs `opencv-python-headless` and `numpy`.
-2. Creates a symlink in `~/.local/bin/hyprsmartshot`.
-3. Installs the recommended Catppuccin Satty configuration into `~/.config/satty/config.toml` (if not already customized).
-
----
+The installer:
+1. Creates `.venv` and installs `opencv-python-headless` and `numpy`.
+2. Symlinks `~/.local/bin/hyprsmartshot`.
+3. Installs the Catppuccin Satty config into `~/.config/satty/config.toml` if none exists.
 
 ## Configuration
 
-HyprSmartShot uses a clean, unified configuration file located at `~/.config/hyprsmartshot/config.json`.
-
-### Configuration Options
+Configuration lives at `~/.config/hyprsmartshot/config.json`:
 
 ```json
 {
@@ -137,69 +116,38 @@ HyprSmartShot uses a clean, unified configuration file located at `~/.config/hyp
 
 | Key | Default | Description |
 |---|---|---|
-| `language` | `"en"` | Interface and notification language (`en`, `cs`, or any custom language code) |
-| `ocrLanguages` | `"eng+ces"` | Tesseract OCR language string (e.g., `eng`, `eng+ces`, `deu+eng`, `fra`) |
-| `postSaveHook` | `""` | Shell command executed after saving a screenshot (`{path}` is replaced with the file path) |
-| `postCopyHook` | `""` | Shell command executed after copying a selection (`{path}` is replaced with the temporary file path) |
+| `language` | `"en"` | Interface and notification language (`en`, `cs`, or custom code) |
+| `ocrLanguages` | `"eng+ces"` | Tesseract OCR language string (e.g. `eng`, `eng+ces`, `deu+eng`) |
+| `postSaveHook` | `""` | Shell command run after saving (`{path}` = saved file path) |
+| `postCopyHook` | `""` | Shell command run after copying (`{path}` = temporary file path) |
 
-#### Language Resolution Order
+Language preference resolves in order:
+1. `SMARTSHOT_LANG` environment variable (e.g. `SMARTSHOT_LANG=de hyprsmartshot universal`)
+2. `~/.config/hyprsmartshot/config.json`
+3. `config/hyprsmartshot/config.json` (defaults to `"en"`)
 
-Language preference is resolved in the following priority order:
-1. Environment variable: `SMARTSHOT_LANG` (e.g., `SMARTSHOT_LANG=de hyprsmartshot universal`)
-2. User JSON config: `~/.config/hyprsmartshot/config.json`
-3. Bundled fallback: `config/hyprsmartshot/config.json` (defaults to `"en"`)
+### Localization (i18n)
 
-### Localization & Internationalization (i18n)
+English (`en`) and Czech (`cs`) are bundled. Any custom language code `{lang}` works without code changes; missing keys fall back from regional tag (e.g. `cs_CZ` -> `cs`) to `en.json`.
 
-HyprSmartShot features a generic, dynamic internationalization architecture. While **English (`en`)** (default) and **Czech (`cs`)** are bundled out of the box as reference translations, **any arbitrary language code `{lang}`** (e.g., `de`, `fr`, `es`, `pl`, `ja`, etc.) is dynamically supported without requiring code changes.
+To add a local translation:
 
-#### How Users Can Add or Customize Languages
+```bash
+scripts/localization_template.py de --user
+```
 
-You can easily add your own language or override existing phrases locally without touching repository files:
+Edit `~/.config/hyprsmartshot/localization/de.json`, then set `"language": "de"` in `config.json` or pass `SMARTSHOT_LANG=de`.
 
-1. **Generate the user localization template**:
-   ```bash
-   scripts/localization_template.py <lang> --user
-   # Example for German:
-   scripts/localization_template.py de --user
-   ```
-   *(This creates `~/.config/hyprsmartshot/localization/<lang>.json` populated from the English reference)*
+To submit a translation upstream:
 
-2. **Translate the values** in your new `<lang>.json` file.
-
-3. **Activate the language**:
-   Set `"language": "<lang>"` in `~/.config/hyprsmartshot/config.json`, or test immediately:
-   ```bash
-   SMARTSHOT_LANG=de hyprsmartshot universal
-   ```
-
-#### Graceful Key Fallback
-
-HyprSmartShot guarantees seamless partial translation support:
-- If any key is missing in your custom or community language file, the system automatically falls back to `en.json` (and internal compiled defaults).
-- Regional language tags (e.g. `cs_CZ` or `de_AT`) automatically fall back to the corresponding base language (`cs`, `de`) before falling back to English.
-- Buttons and notifications will never disappear, break, or display blank labels.
-
-#### Contributing a New Language (Community PRs Welcome!)
-
-Community translations are warmly encouraged! To submit a new language upstream:
-
-1. Generate a translation template in the repository:
-   ```bash
-   scripts/localization_template.py <lang>
-   # Or with blank values:
-   scripts/localization_template.py <lang> --empty
-   ```
-2. Translate the values in `localization/<lang>.json` and validate:
-   ```bash
-   scripts/localization_template.py --check <lang>
-   ```
-3. Open a Pull Request!
-
+```bash
+scripts/localization_template.py <lang>   # or --empty for blank values
+scripts/localization_template.py --check <lang>
+```
 
 ### Hyprland Lua Configuration
 
-Hyprland natively uses Lua scripting. Add the keybindings and window rules to your configuration (e.g., `~/.config/hypr/hyprland.lua` or under `~/.config/hypr/modules/`):
+Add keybindings and window rules to `~/.config/hypr/hyprland.lua` or `~/.config/hypr/modules/`:
 
 #### Keybindings (`modules/keybinds.lua`)
 ```lua
@@ -209,7 +157,6 @@ hl.bind("SHIFT + Print", hl.dsp.exec_cmd("hyprsmartshot screen"))
 ```
 
 #### Satty & Pinned Window Rules (`modules/rules.lua`)
-To ensure the Satty annotation editor and native Pinned Screenshot windows open as floating modals:
 ```lua
 -- Satty Annotation Editor
 hl.window_rule({
@@ -251,9 +198,6 @@ windowrulev2 = keepaspectratio, class:^(hyprsmartshot-pin)$
 ```
 </details>
 
----
-
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-Copyright © 2026 Richieee.
+[MIT License](LICENSE) — Copyright © 2026 Richieee.
