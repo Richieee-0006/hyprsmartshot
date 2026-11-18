@@ -505,7 +505,9 @@ class TestConfiguration(unittest.TestCase):
 
         from unittest import mock
         with tempfile.TemporaryDirectory() as tmp_cache:
-            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": tmp_cache}):
+            with mock.patch.dict(os.environ, {"XDG_CACHE_HOME": tmp_cache}), \
+                 mock.patch.object(ai_detector, "_resolve_api_key", return_value=""), \
+                 mock.patch.object(ai_detector, "_parse_free_llm_skill_models", return_value=["gemma-4-31b-it", "gemini-2.5-flash"]):
                 gem_list = ai_detector.list_provider_models(cfg, provider_override="gemini", force_refresh=True)
                 self.assertFalse(gem_list["cached"])
                 self.assertIn("gemini-3.5-flash-lite", gem_list["models"])
