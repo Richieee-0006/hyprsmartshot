@@ -2,13 +2,25 @@
 
 [![Release](https://img.shields.io/github/v/release/Richieee-0006/hyprsmartshot?style=flat-square&color=fab387)](https://github.com/Richieee-0006/hyprsmartshot/releases)
 [![Target](https://img.shields.io/badge/target-Hyprland_Wayland-89b4fa?style=flat-square&logo=wayland&logoColor=white)](https://hyprland.org)
-[![Toolkit](https://img.shields.io/badge/toolkit-QuickShell_Qt6-a6e3a1?style=flat-square)](https://quickshell.org)
+[![Language](https://img.shields.io/badge/core-C%2B%2B23_Native_Wayland-a6e3a1?style=flat-square)](CMakeLists.txt)
 [![Vision](https://img.shields.io/badge/vision-OpenCV-f9e2af?style=flat-square&logo=opencv&logoColor=black)](https://opencv.org)
 [![Palette](https://img.shields.io/badge/palette-Catppuccin_&_Pywal-cba6f7?style=flat-square)](https://github.com/dylanaraps/pywal)
 [![CI](https://github.com/Richieee-0006/hyprsmartshot/actions/workflows/ci.yml/badge.svg)](https://github.com/Richieee-0006/hyprsmartshot/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](LICENSE)
 
-An ultra-smart, responsive screenshot and annotation utility crafted for **Hyprland** on Wayland. HyprSmartShot harnesses high-performance Computer Vision (OpenCV) to detect in-game interface panels, inventory grids, individual item slots, dialogue windows, and floating desktop overlays in real time.
+Standalone C++23 Wayland screenshot and Computer Vision utility for **Hyprland**. Captures directly via `ext-image-copy-capture-v1` (with `wlr-screencopy` fallback), queries Hyprland over its UNIX socket, renders a `wlr-layer-shell` Cairo/Pango overlay, and isolates OpenCV/libcurl inside short-lived COW-forked workers (`libhss_vision.so`).
+
+### v2 Native C++23 Standalone & Optional Low-RAM Daemon
+
+- **Hybrid process model**: Run `hyprsmartshot daemon` (or `systemctl --user enable --now hyprsmartshot.service`) for ~40 ms triggers and ~2.4–7.3 MB idle PSS (no GPU/OpenGL context, no GTK4, no persistent OpenCV/TBB threads). If the daemon is stopped, `hyprsmartshot` falls back to standalone mode (~72 ms cold start, 0 MB idle RAM).
+- **On-demand Settings GUI**: `hyprsmartshot-settings` is a separate GTK4 binary launched only when pressing `,` or running `hyprsmartshot settings` (0 MB RAM when closed).
+- **Native Pin to Screen**: `hyprsmartshot pin` / `hyprsmartshot-pin` opens a frameless Wayland `xdg-shell` window (`app_id = "hyprsmartshot-pin"`) directly from the same binary.
+- **Build & Install**:
+  ```bash
+  cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=~/.local
+  cmake --build build -j$(nproc)
+  cmake --install build
+  ```
 
 ---
 

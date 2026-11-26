@@ -125,17 +125,18 @@ class TestCLIArguments(unittest.TestCase):
             ], env=env, capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
-            # Verify symlink created in custom BIN_DIR
+            # Verify symlink created in custom BIN_DIR (native compiled binary or legacy script)
             symlink_path = os.path.join(custom_bin, "hyprsmartshot")
             self.assertTrue(os.path.islink(symlink_path))
-            self.assertEqual(os.path.realpath(symlink_path), RUNNER_BIN)
+            valid_targets = {RUNNER_BIN, os.path.join(REPO_DIR, "build", "hyprsmartshot")}
+            self.assertIn(os.path.realpath(symlink_path), valid_targets)
 
             # Verify hyprsmartshot-pin symlink if binary exists
             pin_bin = os.path.join(REPO_DIR, "bin", "hyprsmartshot-pin")
             if os.path.isfile(pin_bin):
                 symlink_pin = os.path.join(custom_bin, "hyprsmartshot-pin")
                 self.assertTrue(os.path.islink(symlink_pin))
-                self.assertEqual(os.path.realpath(symlink_pin), pin_bin)
+                self.assertIn(os.path.realpath(symlink_pin), {pin_bin, os.path.join(REPO_DIR, "build", "hyprsmartshot")})
 
             # Verify config created in custom XDG_CONFIG_HOME
             app_cfg = os.path.join(custom_config, "hyprsmartshot", "config.json")

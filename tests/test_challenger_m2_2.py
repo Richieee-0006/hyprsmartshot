@@ -210,10 +210,11 @@ class TestInstallerIntegration(unittest.TestCase):
             proc = subprocess.run(["bash", "-c", f'source "{INSTALL_SH}"'], env=env, capture_output=True, text=True)
             self.assertEqual(proc.returncode, 0, proc.stderr)
 
-            # Check symlink exists
+            # Check symlink exists (native compiled binary or legacy script)
             symlink_pin = os.path.join(custom_bin, "hyprsmartshot-pin")
             self.assertTrue(os.path.islink(symlink_pin), f"Symlink {symlink_pin} was not created")
-            self.assertEqual(os.path.realpath(symlink_pin), PIN_BIN)
+            valid_pin_targets = {PIN_BIN, os.path.join(REPO_DIR, "build", "hyprsmartshot")}
+            self.assertIn(os.path.realpath(symlink_pin), valid_pin_targets)
 
             # Check symlink target is executable
             self.assertTrue(os.access(symlink_pin, os.X_OK))
@@ -221,7 +222,7 @@ class TestInstallerIntegration(unittest.TestCase):
             # Run via symlink
             proc_run = subprocess.run([symlink_pin, "--version"], capture_output=True, text=True)
             self.assertEqual(proc_run.returncode, 0)
-            self.assertIn("hyprsmartshot-pin v0.0.1", proc_run.stdout)
+            self.assertIn("hyprsmartshot-pin v", proc_run.stdout)
 
     def test_installer_custom_bin_with_spaces_and_special_chars(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -237,7 +238,8 @@ class TestInstallerIntegration(unittest.TestCase):
 
             symlink_pin = os.path.join(custom_bin, "hyprsmartshot-pin")
             self.assertTrue(os.path.islink(symlink_pin))
-            self.assertEqual(os.path.realpath(symlink_pin), PIN_BIN)
+            valid_pin_targets = {PIN_BIN, os.path.join(REPO_DIR, "build", "hyprsmartshot")}
+            self.assertIn(os.path.realpath(symlink_pin), valid_pin_targets)
 
     def test_installer_idempotency(self):
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -258,7 +260,8 @@ class TestInstallerIntegration(unittest.TestCase):
 
             symlink_pin = os.path.join(custom_bin, "hyprsmartshot-pin")
             self.assertTrue(os.path.islink(symlink_pin))
-            self.assertEqual(os.path.realpath(symlink_pin), PIN_BIN)
+            valid_pin_targets = {PIN_BIN, os.path.join(REPO_DIR, "build", "hyprsmartshot")}
+            self.assertIn(os.path.realpath(symlink_pin), valid_pin_targets)
 
 
 class TestQMLDoPinCommandAndEscaping(unittest.TestCase):

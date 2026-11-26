@@ -7,8 +7,47 @@ on:
     branches: [ main ]
 
 jobs:
+  build-and-test-cpp:
+    name: Build & Test Native C++23 Standalone
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install native C++23 & Wayland dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build pkg-config g++ \
+            libwayland-dev wayland-protocols libwayland-bin \
+            libcairo2-dev libpango1.0-dev libxkbcommon-dev \
+            libpng-dev libjpeg-dev libcurl4-openssl-dev \
+            nlohmann-json3-dev libopencv-dev libgtk-4-dev \
+            libsystemd-dev
+
+      - name: Configure & Build (Release)
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_TESTS=ON \
+            -DBUILD_SETTINGS_GUI=ON
+          cmake --build build -j$(nproc)
+
+      - name: Run C++ Unit & CLI Tests
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Verify CMake Install Staging
+        run: |
+          DESTDIR=/tmp/hss-stage cmake --install build --prefix /usr
+          test -x /tmp/hss-stage/usr/bin/hyprsmartshot
+          test -L /tmp/hss-stage/usr/bin/hyprsmartshot-pin
+          test -x /tmp/hss-stage/usr/bin/hyprsmartshot-settings
+          test -f /tmp/hss-stage/usr/lib/hyprsmartshot/libhss_vision.so || test -f /tmp/hss-stage/usr/lib/x86_64-linux-gnu/hyprsmartshot/libhss_vision.so
+          rm -rf /tmp/hss-stage
+
   test-python:
-    name: Test Python Detector & i18n
+    name: Test Reference Python Detector & i18n
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -56,7 +95,7 @@ jobs:
           done
 
   lint-shell:
-    name: Shell Scripts Lint
+    name: Shell Scripts & Packaging Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository

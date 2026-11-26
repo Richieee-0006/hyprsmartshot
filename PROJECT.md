@@ -1,17 +1,13 @@
 # Project: HyprSmartShot
 
-## Architecture
-HyprSmartShot is a high-performance Wayland/Hyprland screenshot utility with Computer Vision UI detection.
-- **Frontend / Overlay**: Written in Quickshell (Qt6 QML with Wayland layer-shell protocol). Manages user selection, action pill, freeze screen dimming, and pixel magnifier.
-- **Vision Subsystem**: Python 3 with OpenCV (`vision/detect_ui.py`). Performs UI element bounding box detection, column clustering, and browser content area analysis.
-- **System Integration**:
-  - `grim` for display captures.
-  - `satty` for annotations.
-  - `wl-clipboard` (`wl-copy`) for image and text clipboard operations.
-  - `hyprctl` for Hyprland workspace and client geometry queries.
-  - `imagemagick` (`magick` / `convert`) for fast subpixel cropping.
-  - Native Wayland floating window (`bin/hyprsmartshot-pin` using PySide6) for Pin to Screen.
-- **Packaging**: Arch Linux standard `PKGBUILD`, `PKGBUILD-git`, `.SRCINFO`, and desktop entry in `packaging/arch/`.
+## Architecture (v2 Native C++23 Standalone)
+HyprSmartShot v2 is a standalone compiled C++23 Wayland/Hyprland screenshot utility with optional low-RAM daemon mode:
+- **Core Binary (`hyprsmartshot`, symlink `hyprsmartshot-pin`)**: Single-threaded Wayland client (`wayland-client`, `wlr-layer-shell`, `ext-image-copy-capture-v1` + `wlr-screencopy` fallback, `ext-data-control-v1`, `xdg-shell`, `viewporter`, `fractional-scale-v1`, `cursor-shape-v1`, `cairo`, `pangocairo`, `xkbcommon`, `libpng`, `libjpeg`). Zero GPU/OpenGL context, zero Qt/QML, zero GTK4, zero persistent OpenCV/TBB threads.
+- **Hybrid Daemon → Client (`src/ipc/daemon.cpp`)**: Optional `hyprsmartshot daemon` listening on `$XDG_RUNTIME_DIR/hyprsmartshot.sock` (`0600` + `SO_PEERCRED`), `inotify` config/Pywal live reload, releases all overlay surfaces/SHM buffers + `malloc_trim(0)` on close (~2.4–7.3 MB idle PSS, ~40 ms trigger). Automatic in-process standalone fallback when daemon is stopped (0 MB idle RAM).
+- **Isolated Vision/AI Plugin (`libhss_vision.so`)**: `libopencv_core`/`imgproc`/`geometry` + `libcurl` loaded via `dlopen` exclusively inside short-lived COW-forked workers (`src/vision/vision_bridge.cpp`). Runs 1920x1080 CV detection in ~38 ms and lets the kernel immediately reclaim 100% of OpenCV/TBB/curl pages on exit.
+- **On-Demand Settings GUI (`hyprsmartshot-settings`)**: Separate GTK4 binary (`src/settings/settings_main.cpp`) launched only on demand, atomically saves `config.json` and triggers daemon `reload-config`.
+- **Packaging**: Arch Linux `PKGBUILD` / `PKGBUILD-git` (`arch=('x86_64' 'aarch64')`), `packaging/systemd/hyprsmartshot.service`, and desktop entry in `packaging/arch/`.
+- **Legacy Reference**: Original Quickshell/Python files (`shell.qml`, `components/`, `vision/*.py`, `bin/`) remain temporarily as reference baseline until explicitly retired.
 
 ## Feature Inventory
 | # | Feature | Description | Milestone | Source |

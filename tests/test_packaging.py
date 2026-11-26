@@ -45,9 +45,9 @@ class TestArchPackaging(unittest.TestCase):
         proc = subprocess.run(["makepkg", "--printsrcinfo"], cwd=ARCH_DIR, capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0, f"makepkg --printsrcinfo failed: {proc.stderr}")
         self.assertIn("pkgname = hyprsmartshot", proc.stdout)
-        self.assertIn("depends = quickshell", proc.stdout)
-        self.assertIn("depends = python-pyside6", proc.stdout)
-        self.assertIn("depends = grim", proc.stdout)
+        self.assertIn("depends = wayland", proc.stdout)
+        self.assertIn("depends = cairo", proc.stdout)
+        self.assertIn("depends = opencv", proc.stdout)
 
         # Test git PKGBUILD .SRCINFO
         proc_git = subprocess.run(["makepkg", "-p", "PKGBUILD-git", "--printsrcinfo"], cwd=ARCH_DIR, capture_output=True, text=True)
@@ -60,10 +60,10 @@ class TestArchPackaging(unittest.TestCase):
         with open(SRCINFO, "r", encoding="utf-8") as f:
             content = f.read()
         self.assertIn("pkgname = hyprsmartshot", content)
-        self.assertIn("depends = quickshell", content)
-        self.assertIn("depends = python-pyside6", content)
-        self.assertIn("depends = satty", content)
-        self.assertIn("depends = wl-clipboard", content)
+        self.assertIn("depends = wayland", content)
+        self.assertIn("depends = cairo", content)
+        self.assertIn("depends = pango", content)
+        self.assertIn("depends = opencv", content)
 
     def test_desktop_entry_fields(self):
         with open(DESKTOP_FILE, "r", encoding="utf-8") as f:

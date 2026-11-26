@@ -1,0 +1,15 @@
+[Unit]
+Description=HyprSmartShot Wayland Screenshot & CV Daemon
+Documentation=https://github.com/Richieee-0006/hyprsmartshot
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/hyprsmartshot daemon
+Restart=on-failure
+RestartSec=2
+MemoryHigh=64M
+
+[Install]
+WantedBy=graphical-session.target
