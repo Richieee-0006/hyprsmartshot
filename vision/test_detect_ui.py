@@ -725,5 +725,45 @@ class TestUIDetector(unittest.TestCase):
         text_boxes = [b for b in res["boxes"] if b.get("type") in ("text", "text_block")]
         self.assertGreaterEqual(len(text_boxes), 1, "Large display headline up to 96px should be detected")
 
+    def test_layer_popout_preserved_and_not_split(self):
+        import json
+        img = np.full((600, 800, 3), 24, dtype=np.uint8)
+        cv2.rectangle(img, (200, 420), (600, 560), (45, 45, 55), -1)
+        path = self._save_img("layer_popout.png", img)
+        clients_path = os.path.join(self.temp_dir.name, "clients_layer.json")
+        with open(clients_path, "w") as f:
+            json.dump([
+                {
+                    "at": [0, 0],
+                    "size": [800, 600],
+                    "floating": True,
+                    "pinned": True,
+                    "mapped": True,
+                    "hidden": False,
+                    "class": "caelestia-drawers",
+                    "title": "caelestia-drawers",
+                    "is_layer": True,
+                },
+                {
+                    "at": [200, 420],
+                    "size": [400, 140],
+                    "floating": True,
+                    "pinned": True,
+                    "mapped": True,
+                    "hidden": False,
+                    "class": "quickshell-dock",
+                    "title": "quickshell-dock",
+                    "is_layer": True,
+                },
+            ], f)
+
+        res = detect_ui_elements(path, clients_path=clients_path)
+        boxes = res["boxes"]
+        self.assertFalse(any(b.get("class") == "caelestia-drawers" for b in boxes))
+        dock_boxes = [b for b in boxes if b.get("class") == "quickshell-dock"]
+        self.assertEqual(len(dock_boxes), 1)
+        self.assertEqual(dock_boxes[0]["type"], "floating_window")
+        self.assertTrue(dock_boxes[0]["is_layer"])
+
 if __name__ == "__main__":
     unittest.main()

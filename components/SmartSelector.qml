@@ -784,9 +784,14 @@ Item {
                         if (mx >= wx && mx <= wx + ww && my >= wy && my <= wy + wh) {
                             const isFloating = !!c.floating;
                             const isPinned = !!c.pinned;
+                            const isLayer = !!c.is_layer;
                             const clsLow = String(c.class || "").toLowerCase();
-                            // Skip fullscreen transparent overlays (e.g. BongoCat) so windows underneath stay selectable
+                            // Skip fullscreen transparent overlays (e.g. BongoCat, drawers backdrop) so windows underneath stay selectable
                             if (clsLow.indexOf("bongocat") !== -1 ||
+                                clsLow === "caelestia-drawers" ||
+                                clsLow === "caelestia-background" ||
+                                clsLow === "caelestia-border-exclusion" ||
+                                clsLow === "awww-daemon" ||
                                 (isFloating && isPinned && ww >= root.width * 0.92 && wh >= root.height * 0.92)) {
                                 continue;
                             }
@@ -799,6 +804,7 @@ Item {
                                 type: isFloating ? "floating_window" : "window",
                                 floating: isFloating,
                                 pinned: isPinned,
+                                isLayer: isLayer,
                                 focusHistoryID: (typeof c.focusHistoryID === "number") ? c.focusHistoryID : 999,
                                 title: c.title || "",
                                 class: c.class || ""
@@ -812,9 +818,10 @@ Item {
                     }
                 }
 
-                // Determine top-most floating overlay if any (pinned first, then lowest focusHistoryID)
+                // Determine top-most floating overlay if any (layer surfaces first, then pinned, then lowest focusHistoryID)
                 if (floatingWindows.length > 0) {
                     floatingWindows.sort((a, b) => {
+                        if (a.isLayer !== b.isLayer) return a.isLayer ? -1 : 1;
                         if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
                         return a.focusHistoryID - b.focusHistoryID;
                     });
@@ -834,14 +841,13 @@ Item {
                         continue;
                     }
                     if (mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
-                        // If cursor is inside a floating window, only accept CV boxes that are inside the floating window
+                        // If cursor is inside a floating window/popout, reject boxes extending outside it (occluded background bleed)
                         if (topFloatingWindow) {
-                            const insideFloating = (b.x >= topFloatingWindow.x - 4 &&
-                                                    b.y >= topFloatingWindow.y - 4 &&
-                                                    b.x + b.w <= topFloatingWindow.x + topFloatingWindow.w + 4 &&
-                                                    b.y + b.h <= topFloatingWindow.y + topFloatingWindow.h + 4);
-                            if (!insideFloating && (b.w > topFloatingWindow.w || b.h > topFloatingWindow.h)) {
-                                // Skip background window boxes that bleed through under the floating overlay
+                            const insideFloating = (b.x >= topFloatingWindow.x - 6 &&
+                                                    b.y >= topFloatingWindow.y - 6 &&
+                                                    b.x + b.w <= topFloatingWindow.x + topFloatingWindow.w + 6 &&
+                                                    b.y + b.h <= topFloatingWindow.y + topFloatingWindow.h + 6);
+                            if (!insideFloating) {
                                 continue;
                             }
                         }
@@ -865,6 +871,13 @@ Item {
                     for (let k = 0; k < root.aiBoxes.length; k++) {
                         const ab = root.aiBoxes[k];
                         if (mx >= ab.x && mx <= ab.x + ab.w && my >= ab.y && my <= ab.y + ab.h) {
+                            if (topFloatingWindow) {
+                                const aiInside = (ab.x >= topFloatingWindow.x - 6 &&
+                                                  ab.y >= topFloatingWindow.y - 6 &&
+                                                  ab.x + ab.w <= topFloatingWindow.x + topFloatingWindow.w + 6 &&
+                                                  ab.y + ab.h <= topFloatingWindow.y + topFloatingWindow.h + 6);
+                                if (!aiInside) continue;
+                            }
                             candidates.push({
                                 x: ab.x,
                                 y: ab.y,

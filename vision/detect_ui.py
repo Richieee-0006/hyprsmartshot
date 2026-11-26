@@ -453,6 +453,8 @@ def detect_window_content_areas(gray, client_boxes):
     h_img, w_img = gray.shape
 
     for win in client_boxes:
+        if win.get("is_layer"):
+            continue
         wx = max(0, int(win.get('x', 0)))
         wy = max(0, int(win.get('y', 0)))
         ww = min(w_img - wx, int(win.get('w', 0)))
@@ -972,9 +974,12 @@ def detect_ui_elements(image_path, clients_path=None, min_area=None, max_area_ra
 
                                 if clamped_w >= 20 and clamped_h >= 20:
                                     is_fl = bool(c.get("floating", False))
+                                    is_layer = bool(c.get("is_layer", False))
                                     win_class = str(c.get("class", "") or "")
-                                    # Skip fullscreen transparent overlays (e.g. BongoCat) that mask real windows below
-                                    if ("bongocat" in win_class.lower() or
+                                    cls_low = win_class.lower()
+                                    # Skip fullscreen transparent overlays (e.g. BongoCat, drawers backdrop) that mask real windows below
+                                    if ("bongocat" in cls_low or
+                                            cls_low in ("caelestia-drawers", "caelestia-background", "caelestia-border-exclusion", "awww-daemon") or
                                             (is_fl and is_pinned and clamped_w >= orig_w * 0.92 and clamped_h >= orig_h * 0.92)):
                                         continue
                                     win_obj = {
@@ -988,6 +993,7 @@ def detect_ui_elements(image_path, clients_path=None, min_area=None, max_area_ra
                                         "type": "floating_window" if is_fl else "window",
                                         "floating": is_fl,
                                         "pinned": is_pinned,
+                                        "is_layer": is_layer,
                                         "focusHistoryID": c.get("focusHistoryID", 999),
                                         "title": c.get("title", ""),
                                         "class": win_class,

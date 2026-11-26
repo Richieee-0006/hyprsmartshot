@@ -427,8 +427,39 @@ if [ "$MODE" = "full" ]; then
 fi
 
 # 1. Instant screen freeze (uncompressed level 0 PNG in tmpfs for minimum encode/decode latency)
-# Snapshot Hyprland client windows concurrently while grim captures the screen
-( hyprctl clients -j > "$CLIENTS_JSON" 2>/dev/null || echo "[]" > "$CLIENTS_JSON" ) &
+# Snapshot Hyprland client windows + visible layer-shell popouts/docks concurrently while grim captures the screen
+(
+    {
+        hyprctl clients -j 2>/dev/null || echo "[]"
+        hyprctl layers -j 2>/dev/null || echo "{}"
+    } | jq -s --arg mon "$MONITOR_NAME" --argjson mw "${MONITOR_W:-1920}" --argjson mh "${MONITOR_H:-1080}" '
+        (.[0] // []) + (
+            [
+                (.[1] // {})
+                | (if ($mon != "" and has($mon)) then {($mon): .[$mon]} else . end)
+                | to_entries[]
+                | .value.levels // {}
+                | to_entries[]
+                | select(.key == "1" or .key == "2" or .key == "3")
+                | .value[]
+                | select((.w // 0) >= 24 and (.h // 0) >= 24)
+                | select(((.w // 0) < ($mw * 0.90)) or ((.h // 0) < ($mh * 0.90)))
+                | {
+                    at: [(.x // 0), (.y // 0)],
+                    size: [(.w // 0), (.h // 0)],
+                    floating: true,
+                    pinned: true,
+                    mapped: true,
+                    hidden: false,
+                    focusHistoryID: -1,
+                    class: (.namespace // "layer-popout"),
+                    title: (.namespace // "layer-popout"),
+                    is_layer: true
+                }
+            ]
+        )
+    ' > "$CLIENTS_JSON" 2>/dev/null || echo "[]" > "$CLIENTS_JSON"
+) &
 CLIENTS_PID=$!
 
 if [ -n "$MONITOR_NAME" ]; then
